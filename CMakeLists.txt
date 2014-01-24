@@ -8,7 +8,7 @@ rosbuild_find_ros_package(dynamic_reconfigure)
 include(${dynamic_reconfigure_PACKAGE_PATH}/cmake/cfgbuild.cmake)
 gencfg()
 
-rosbuild_add_library(amcl_pf 
+rosbuild_add_library(nested_amcl_pf 
                     src/pf/pf.c 
                     src/pf/pf_kdtree.c 
                     src/pf/pf_pdf.c 
@@ -16,23 +16,23 @@ rosbuild_add_library(amcl_pf
                     src/pf/eig3.c
                     src/pf/pf_draw.c)
 
-rosbuild_add_library(amcl_map
+rosbuild_add_library(nested_amcl_map
                     src/map/map.c
                     src/map/map_cspace.cpp
                     src/map/map_range.c
                     src/map/map_store.c
                     src/map/map_draw.c)
 
-rosbuild_add_library(amcl_sensors
+rosbuild_add_library(nested_amcl_sensors
                     src/sensors/amcl_sensor.cpp
                     src/sensors/amcl_odom.cpp
                     src/sensors/amcl_laser.cpp)
-target_link_libraries(amcl_sensors amcl_map amcl_pf)
+target_link_libraries(nested_amcl_sensors nested_amcl_map nested_amcl_pf)
 
 rosbuild_add_executable(bin/nested_amcl
                        src/amcl_node.cpp)
 
-target_link_libraries(bin/amcl amcl_sensors amcl_map amcl_pf)
+target_link_libraries(bin/nested_amcl nested_amcl_sensors nested_amcl_map nested_amcl_pf)
 
 ## Tests are failing on OSX for an unknown reason
 #include(CMakeDetermineSystem)
