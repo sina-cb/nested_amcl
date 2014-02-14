@@ -980,7 +980,8 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
             // This is what is going on here i believe:
             //
             // The TranformListener (tf_) knows the transformation between the frame_ids of
-            // the base_frame_id_ and the laser's frame_id (probably gets it from gazebo?)
+            // the base_frame_id_ and the laser's frame_id (probably gets it from gazebo? or
+            // might be from the turtlebot_description package)
             // Thus, it uses those (from base_frame_id_ and ident) to get the transform
             // between the two frames so as to get the relative pose of the laser from the
             // robot's base. That is, the laser's pose in the frame of the robot's base_frame.
