@@ -852,9 +852,9 @@ AmclNode::dualMCL_PoseGenerator(void* arg, double landmark_r, double landmark_ph
         return newPose;
     }
 
-   // newPose.v[0]=0;
-   // newPose.v[1]=0;
-   // newPose.v[2]=0;
+    // newPose.v[0]=0;
+    // newPose.v[1]=0;
+    // newPose.v[2]=0;
 
     double gamma = 0;
 
@@ -1214,9 +1214,9 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
             else{
                 ldata.ranges[i][2] = 0;
 
-//                temp_landmark_r = 0;
-//                temp_landmark_phi = 0;
-//                blob_ray_count = 0;
+                // temp_landmark_r = 0;
+                // temp_landmark_phi = 0;
+                // blob_ray_count = 0;
             }
 
 
