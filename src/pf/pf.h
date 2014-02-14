@@ -132,6 +132,26 @@ typedef struct _pf_t
   int current_set;
   pf_sample_set_t sets[2];
 
+  /**
+    Nested Particle Filtering related modifications
+    */
+
+  // There are two sets of particle filters per set of particles
+  // Each set of pfs has one particle filter for every particle in current pf.
+
+  struct _pf_t* nested_pf_sets[2];
+
+  // nesting_lvl determines if we need nested particles in current pf
+  // At the highest level, i.e. robot_i's particles...the lvl will be highest (1 in current case).
+  // As the particles go to lower levels, the lvl will decrement for every new nesting lvl.
+  // Thus, at the lowest level, when we don't need any more nested particles, the nesting_lvl will be 0
+
+  int nesting_lvl;
+  int min_nested_samples;
+  int max_nested_samples;
+
+  /** NPF mods end */
+
   // Running averages, slow and fast, of likelihood
   double w_slow, w_fast;
 
@@ -151,7 +171,11 @@ pf_t *pf_alloc(int min_samples, int max_samples,
                double alpha_slow, double alpha_fast,
                pf_init_model_fn_t random_pose_fn,
                pf_dual_model_fn_t dual_pose_fn, //Added by KPM
-               void *random_pose_data);
+               void *random_pose_data,
+               //Added by KPM
+               int nesting_level,
+               int min_nested_samples, int max_nested_samples
+               );
 
 // Free an existing filter
 void pf_free(pf_t *pf);

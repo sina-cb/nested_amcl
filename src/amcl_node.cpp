@@ -263,12 +263,12 @@ private:
 
 std::vector<std::pair<int,int> > AmclNode::free_space_indices;
 
-#define USAGE "USAGE: amcl"
+#define USAGE "USAGE: nested_amcl"
 
 int
 main(int argc, char** argv)
 {
-    ros::init(argc, argv, "amcl");
+    ros::init(argc, argv, "nested_amcl");
     ros::NodeHandle nh;
 
     AmclNode an;
@@ -336,6 +336,8 @@ AmclNode::AmclNode() :
     private_nh_.param("landmark_loc_y", landmark_loc_y, 0.0);
 
 
+
+    /**** Initializing Laser Model ****/
     std::string tmp_model_type;
     private_nh_.param("laser_model_type", tmp_model_type, std::string("likelihood_field"));
     if(tmp_model_type == "beam")
@@ -349,6 +351,7 @@ AmclNode::AmclNode() :
         laser_model_type_ = LASER_MODEL_LIKELIHOOD_FIELD;
     }
 
+    /**** Initializing Odom Model ****/
     private_nh_.param("odom_model_type", tmp_model_type, std::string("diff"));
     if(tmp_model_type == "diff")
         odom_model_type_ = ODOM_MODEL_DIFF;
@@ -385,6 +388,8 @@ AmclNode::AmclNode() :
     cloud_pub_interval.fromSec(1.0);
     tfb_ = new tf::TransformBroadcaster();
     tf_ = new tf::TransformListener();
+
+    /**** Publishers and Subscribers ****/
 
     pose_pub_ = nh_.advertise<geometry_msgs::PoseWithCovarianceStamped>("amcl_pose", 2);
     particlecloud_pub_ = nh_.advertise<geometry_msgs::PoseArray>("particlecloud", 2);
@@ -493,7 +498,9 @@ void AmclNode::reconfigureCB(AMCLConfig &config, uint32_t level)
                    alpha_slow_, alpha_fast_,
                    (pf_init_model_fn_t)AmclNode::uniformPoseGenerator,
                    (pf_dual_model_fn_t)AmclNode::dualMCL_PoseGenerator, //Added by KPM
-                   (void *)map_);
+                   (void *)map_,
+                   //Added by KPM
+                   0, min_particles_, max_particles_);
     pf_err_ = config.kld_err;
     pf_z_ = config.kld_z;
     pf_->pop_err = pf_err_;
@@ -614,7 +621,9 @@ AmclNode::handleMapMessage(const nav_msgs::OccupancyGrid& msg)
                    alpha_slow_, alpha_fast_,
                    (pf_init_model_fn_t)AmclNode::uniformPoseGenerator,
                    (pf_dual_model_fn_t)AmclNode::dualMCL_PoseGenerator, //Added by KPM
-                   (void *)map_);
+                   (void *)map_,
+                   //Added by KPM
+                   0, min_particles_, max_particles_);
     pf_->pop_err = pf_err_;
     pf_->pop_z = pf_z_;
 
@@ -744,6 +753,10 @@ AmclNode::~AmclNode()
     // TODO: delete everything allocated in constructor
 }
 
+
+/*!
+  * Determines robot's pose within the map when a particular laser scan was taken
+  */
 bool
 AmclNode::getOdomPose(tf::Stamped<tf::Pose>& odom_pose,
                       double& x, double& y, double& yaw,
@@ -942,7 +955,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
     boost::recursive_mutex::scoped_lock lr(configuration_mutex_);
     int laser_index = -1;
 
-    // Do we have the base->base_laser Tx yet?
+    // Do we have the base->base_laser Tx (transform) yet?
     if(frame_to_laser_.find(laser_scan->header.frame_id) == frame_to_laser_.end())
     {
         ROS_DEBUG("Setting up laser %d (frame_id=%s)\n", (int)frame_to_laser_.size(), laser_scan->header.frame_id.c_str());
@@ -950,12 +963,28 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
         lasers_update_.push_back(true);
         laser_index = frame_to_laser_.size();
 
+
+        // This creates a time-stamped Pose that has the following values:
+        // It is a Pose that is an identity (0,0,0,0) (x,y,z,theta) and
+        // It is time-stamped with the time ros::Time()
+        // It has the frame_id (i.e. like its uniquely identifiable name) of the laser that we are looking at right now
+        //
+        // In short, we are creating a new frame for the laser and initializing the location of
+        // the laser within that frame at (0,0,0,0) and current time.
         tf::Stamped<tf::Pose> ident (btTransform(tf::createIdentityQuaternion(),
                                                  btVector3(0,0,0)),
                                      ros::Time(), laser_scan->header.frame_id);
         tf::Stamped<tf::Pose> laser_pose;
         try
         {
+            // This is what is going on here i believe:
+            //
+            // The TranformListener (tf_) knows the transformation between the frame_ids of
+            // the base_frame_id_ and the laser's frame_id (probably gets it from gazebo?)
+            // Thus, it uses those (from base_frame_id_ and ident) to get the transform
+            // between the two frames so as to get the relative pose of the laser from the
+            // robot's base. That is, the laser's pose in the frame of the robot's base_frame.
+
             this->tf_->transformPose(base_frame_id_, ident, laser_pose);
         }
         catch(tf::TransformException& e)
@@ -1045,6 +1074,17 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
         // Modify the delta in the action data so the filter gets
         // updated correctly
         odata.delta = delta;
+
+        /**
+          Notes for me:
+          UpdateAction essentially applies the transition function to all samples present in the sets of samples that are contained
+          in "pf_" . There are two sets of samples in pf_
+          It receives the odom data ...which is the current pose, and the delta between current pose and earlier pose. This data
+          is used as the "action" which is used to sample the particles to proliferate them to to current set of pose hypotheses.
+          Appropriate noise is included (for both rotation and translation) and the sampling is done using a zero-mean gaussian.
+
+          */
+
 
         // Use the action data to update the filter
         odom_->UpdateAction(pf_, (AMCLSensorData*)&odata);
@@ -1163,7 +1203,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
                     if(temp_landmark_r >0){
                         landmark_r = temp_landmark_r/blob_ray_count;
                         landmark_phi = temp_landmark_phi/blob_ray_count;
-                        ROS_INFO("final landmark_r: %f \t\t landmark_phi: %f",landmark_r,landmark_phi);
+                        //ROS_INFO("final landmark_r: %f \t\t landmark_phi: %f",landmark_r,landmark_phi);
                     }
                     temp_landmark_r = 0;
                     temp_landmark_phi = 0;
@@ -1181,6 +1221,14 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
 
 
         }
+
+
+        /**
+          Notes for me:
+          UpdateSensor function calculates the weights for the samples from the sensor readings.
+
+
+          */
 
         lasers_[laser_index]->UpdateSensor(pf_, (AMCLSensorData*)&ldata);
 
@@ -1217,6 +1265,9 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
 
         particlecloud_pub_.publish(cloud_msg);
     }
+
+
+    // Calculate the pose to be published as the current pose estimate by AMCL
 
     if(resampled || force_publication)
     {
@@ -1297,6 +1348,8 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
          }
        */
 
+
+            // Publish amcl's best estimate for current pose
             pose_pub_.publish(p);
             last_published_pose = p;
 

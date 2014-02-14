@@ -42,20 +42,27 @@
 static int pf_resample_limit(pf_t *pf, int k);
 
 // Re-compute the cluster statistics for a sample set
-static void pf_cluster_stats(pf_t *pf, pf_sample_set_t *set);
+static void pf_cluster_stats(pf_sample_set_t *set);
 
+static void pf_copy(pf_t *pf_source, pf_t *pf_dest);
 
 // Create a new filter
 pf_t *pf_alloc(int min_samples, int max_samples,
                double alpha_slow, double alpha_fast,
                pf_init_model_fn_t random_pose_fn,
                pf_dual_model_fn_t dual_pose_fn, //Added by KPM
-               void *random_pose_data)
+               void *random_pose_data,
+
+               //Added by KPM
+               int nesting_level,
+               int min_nested_samples, int max_nested_samples
+               )
 {
   int i, j;
   pf_t *pf;
   pf_sample_set_t *set;
   pf_sample_t *sample;
+  pf_t *nested_pf;
 
   srand48(time(NULL));
 
@@ -66,7 +73,7 @@ pf_t *pf_alloc(int min_samples, int max_samples,
 
   //Added by KPM
   pf->dual_pose_fn = dual_pose_fn;
-
+  pf->nesting_lvl = nesting_level;
 
 
   pf->min_samples = min_samples;
@@ -88,6 +95,10 @@ pf_t *pf_alloc(int min_samples, int max_samples,
     set->sample_count = max_samples;
     set->samples = calloc(max_samples, sizeof(pf_sample_t));
 
+    if(nesting_level > 0){
+      pf->nested_pf_sets[j] = calloc(max_samples, sizeof(pf_t));
+    }
+
     for (i = 0; i < set->sample_count; i++)
     {
       sample = set->samples + i;
@@ -95,6 +106,19 @@ pf_t *pf_alloc(int min_samples, int max_samples,
       sample->pose.v[1] = 0.0;
       sample->pose.v[2] = 0.0;
       sample->weight = 1.0 / max_samples;
+
+      if(nesting_level > 0){
+        nested_pf = pf->nested_pf_sets[j] + i;
+        nested_pf = pf_alloc(min_nested_samples, max_nested_samples,
+                             alpha_slow, alpha_fast,
+                             random_pose_fn,
+                             dual_pose_fn, //Added by KPM
+                             random_pose_data,
+                             //Added by KPM
+                             (nesting_level-1),
+                             0, 0
+                             );
+      }
     }
 
     // HACK: is 3 times max_samples enough?
@@ -118,9 +142,10 @@ pf_t *pf_alloc(int min_samples, int max_samples,
 }
 
 
-// Free an existing filter
+// Free an existing filter, and any lower level nested filters within it
 void pf_free(pf_t *pf)
 {
+  pf_t *nested_pf;
   int i;
 
   for (i = 0; i < 2; i++)
@@ -128,6 +153,16 @@ void pf_free(pf_t *pf)
     free(pf->sets[i].clusters);
     pf_kdtree_free(pf->sets[i].kdtree);
     free(pf->sets[i].samples);
+
+    // Frees up all lower level filters too
+    if(pf->nesting_lvl > 0){
+      int j;
+      for(j = 0; j < pf->max_samples; j++){
+        nested_pf = pf->nested_pf_sets[i] + j;
+        pf_free(nested_pf);
+      }
+    }
+
   }
   free(pf);
 
@@ -142,6 +177,8 @@ void pf_init(pf_t *pf, pf_vector_t mean, pf_matrix_t cov, map_t* map)
   pf_sample_set_t *set;
   pf_sample_t *sample;
   pf_pdf_gaussian_t *pdf;
+
+  pf_t *nested_pf;
 
   set = pf->sets + pf->current_set;
 
@@ -181,13 +218,27 @@ void pf_init(pf_t *pf, pf_vector_t mean, pf_matrix_t cov, map_t* map)
   pf_pdf_gaussian_free(pdf);
 
   // Re-compute cluster statistics
-  pf_cluster_stats(pf, set);
+  pf_cluster_stats(set);
+
+
+  // Initializing all the lower level filters with the exact same parameters as the current one
+  // This is a hack, and will only work correctly when we are initializing the filter for
+  // the first time, and not when we want to RECONFIGURE the filter.
+  if(pf->nesting_lvl > 0){
+    int i;
+    for(i = 0; i < set->sample_count; i++){
+      nested_pf = pf->nested_pf_sets[pf->current_set] + i;
+      pf_init(nested_pf, mean, cov, map);
+    }
+  }
+
 
   return;
 }
 
 
-// Initialize the filter using some model
+// Initialize the filter using some model.
+// (The only time this is being used right now is to initialize using the uniform pose generator)
 void pf_init_model(pf_t *pf, pf_init_model_fn_t init_fn, void *init_data)
 {
   int i;
@@ -215,7 +266,7 @@ void pf_init_model(pf_t *pf, pf_init_model_fn_t init_fn, void *init_data)
   pf->w_slow = pf->w_fast = 0.0;
 
   // Re-compute cluster statistics
-  pf_cluster_stats(pf, set);
+  pf_cluster_stats(set);
 
   return;
 }
@@ -295,6 +346,9 @@ void pf_update_resample(pf_t *pf, double landmark_r, double landmark_phi, double
   pf_sample_set_t *set_a, *set_b;
   pf_sample_t *sample_a, *sample_b;
 
+  struct _pf_t *pf_set_a, *pf_set_b;
+  struct _pf_t *pf_sample_a, *pf_sample_b;
+
   double r,c,U;
   int m;
   double count_inv;
@@ -304,12 +358,17 @@ void pf_update_resample(pf_t *pf, double landmark_r, double landmark_phi, double
   set_a = pf->sets + pf->current_set;
   set_b = pf->sets + (pf->current_set + 1) % 2;
 
+  pf_set_a = pf->nested_pf_sets[pf->current_set];
+  pf_set_b = pf->nested_pf_sets[(pf->current_set +1) % 2];
+
+
   // Create the kd tree for adaptive sampling
   pf_kdtree_clear(set_b->kdtree);
 
   // Draw samples from set a to create set b.
   total = 0;
   set_b->sample_count = 0;
+
 
   w_diff = 1.0 - pf->w_fast / pf->w_slow;
   if(w_diff < 0.0)
@@ -328,6 +387,7 @@ void pf_update_resample(pf_t *pf, double landmark_r, double landmark_phi, double
   while(set_b->sample_count < M)
   {
     sample_b = set_b->samples + set_b->sample_count++;
+    pf_sample_b = pf_set_b + set_b->sample_count;
 
 //    if(drand48() < w_diff){
 
@@ -350,38 +410,40 @@ void pf_update_resample(pf_t *pf, double landmark_r, double landmark_phi, double
 
 
 
-        else
+      else
+      {
+
+        // Low-variance resampler, taken from Probabilistic Robotics, p110
+        U = r + m * count_inv;
+        while(U>c)
         {
-
-          // Low-variance resampler, taken from Probabilistic Robotics, p110
-          U = r + m * count_inv;
-          while(U>c)
+          i++;
+          // Handle wrap-around by resetting counters and picking a new random
+          // number
+          if(i >= set_a->sample_count)
           {
-            i++;
-            // Handle wrap-around by resetting counters and picking a new random
-            // number
-            if(i >= set_a->sample_count)
-            {
-              r = drand48() * count_inv;
-              c = set_a->samples[0].weight;
-              i = 0;
-              m = 0;
-              U = r + m * count_inv;
-              continue;
-            }
-            c += set_a->samples[i].weight;
+            r = drand48() * count_inv;
+            c = set_a->samples[0].weight;
+            i = 0;
+            m = 0;
+            U = r + m * count_inv;
+            continue;
           }
-          m++;
-
-          assert(i<set_a->sample_count);
-
-          sample_a = set_a->samples + i;
-
-          assert(sample_a->weight > 0);
-
-          // Add sample to list
-          sample_b->pose = sample_a->pose;
+          c += set_a->samples[i].weight;
         }
+        m++;
+
+        assert(i<set_a->sample_count);
+
+        sample_a = set_a->samples + i;
+        pf_sample_a = pf_set_a + i;
+
+        assert(sample_a->weight > 0);
+
+        // Add sample to list
+        sample_b->pose = sample_a->pose;
+        pf_copy(pf_sample_a, pf_sample_b);
+      }
     }
 
 
@@ -408,7 +470,7 @@ void pf_update_resample(pf_t *pf, double landmark_r, double landmark_phi, double
   }
 
   // Re-compute cluster statistics
-  pf_cluster_stats(pf, set_b);
+  pf_cluster_stats(set_b);
 
   // Use the newly created sample set
   pf->current_set = (pf->current_set + 1) % 2;
@@ -444,7 +506,7 @@ int pf_resample_limit(pf_t *pf, int k)
 
 
 // Re-compute the cluster statistics for a sample set
-void pf_cluster_stats(pf_t *pf, pf_sample_set_t *set)
+void pf_cluster_stats(pf_sample_set_t *set)
 {
   int i, j, k, cidx;
   pf_sample_t *sample;
@@ -545,7 +607,7 @@ void pf_cluster_stats(pf_t *pf, pf_sample_set_t *set)
     for (j = 0; j < 2; j++)
       for (k = 0; k < 2; k++)
         cluster->cov.m[j][k] = cluster->c[j][k] / cluster->weight -
-          cluster->mean.v[j] * cluster->mean.v[k];
+            cluster->mean.v[j] * cluster->mean.v[k];
 
     // Covariance in angular components; I think this is the correct
     // formula for circular statistics.
@@ -553,7 +615,7 @@ void pf_cluster_stats(pf_t *pf, pf_sample_set_t *set)
                                          cluster->m[3] * cluster->m[3]));
 
     //printf("cluster %d %d %f (%f %f %f)\n", i, cluster->count, cluster->weight,
-           //cluster->mean.v[0], cluster->mean.v[1], cluster->mean.v[2]);
+    //cluster->mean.v[0], cluster->mean.v[1], cluster->mean.v[2]);
     //pf_matrix_fprintf(cluster->cov, stdout, "%e");
   }
 
@@ -632,3 +694,14 @@ int pf_get_cluster_stats(pf_t *pf, int clabel, double *weight,
 }
 
 
+void pf_copy(pf_t *pf_source, pf_t *pf_dest)
+{
+  pf_dest = calloc(1, sizeof(pf_t));
+
+  pf_source->alpha_fast = pf_dest->alpha_fast;
+  pf_source->alpha_slow = pf_dest->alpha_slow;
+  pf_source->current_set = pf_dest->current_set;
+
+
+  return;
+}
