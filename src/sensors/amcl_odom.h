@@ -58,14 +58,14 @@ class AMCLOdom : public AMCLSensor
   // Default constructor
   public: AMCLOdom();
 
-  public: void SetModelDiff(double alpha1, 
-                            double alpha2, 
-                            double alpha3, 
+  public: void SetModelDiff(double alpha1,
+                            double alpha2,
+                            double alpha3,
                             double alpha4);
 
-  public: void SetModelOmni(double alpha1, 
-                            double alpha2, 
-                            double alpha3, 
+  public: void SetModelOmni(double alpha1,
+                            double alpha2,
+                            double alpha3,
                             double alpha4,
                             double alpha5);
 
@@ -73,9 +73,12 @@ class AMCLOdom : public AMCLSensor
   // has been updated.
   public: virtual bool UpdateAction(pf_t *pf, AMCLSensorData *data);
 
+  // Generates fake odom delta based on a behaviour model
+  void getNestedParticlePose(pf_vector_t *delta);
+
   // Current data timestamp
   private: double time;
-  
+
   // Model type
   private: odom_model_t model_type;
 

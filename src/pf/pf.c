@@ -88,6 +88,13 @@ pf_t *pf_alloc(int min_samples, int max_samples,
     pf->pop_z = 3;
 
     pf->current_set = 0;
+
+    // Set initial fake odom pose and delta for the nested particles
+    if(nesting_level > 0){
+        pf->fake_nested_odomPose = pf_vector_zero();
+        pf->fake_nested_odomDelta = pf_vector_zero();
+    }
+
     for (j = 0; j < 2; j++)
     {
         set = pf->sets + j;
@@ -95,6 +102,7 @@ pf_t *pf_alloc(int min_samples, int max_samples,
         set->sample_count = max_samples;
         set->samples = calloc(max_samples, sizeof(pf_sample_t));
 
+        // Allocate memory to the fake nested pf sets if present.
         if(nesting_level > 0){
             pf->nested_pf_sets[j] = calloc(max_samples, sizeof(pf_t));
         }
@@ -107,6 +115,7 @@ pf_t *pf_alloc(int min_samples, int max_samples,
             sample->pose.v[2] = 0.0;
             sample->weight = 1.0 / max_samples;
 
+            // Also initialize the nested particle filters if present
             if(nesting_level > 0){
                 nested_pf = pf->nested_pf_sets[j] + i;
                 nested_pf = pf_alloc(min_nested_samples, max_nested_samples,

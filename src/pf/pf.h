@@ -34,9 +34,12 @@
 //KPM: including MAP.h
 #include "../map/map.h"
 
+
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+
 
 // Forward declarations
 struct _pf_t;
@@ -149,6 +152,9 @@ typedef struct _pf_t
     int nesting_lvl;
     int min_nested_samples;
     int max_nested_samples;
+
+    pf_vector_t fake_nested_odomPose;
+    pf_vector_t fake_nested_odomDelta;
 
     /** NPF mods end */
 
