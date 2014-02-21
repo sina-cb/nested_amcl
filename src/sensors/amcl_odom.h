@@ -74,7 +74,7 @@ class AMCLOdom : public AMCLSensor
   public: virtual bool UpdateAction(pf_t *pf, AMCLSensorData *data);
 
   // Generates fake odom delta based on a behaviour model
-  void getNestedParticlePose(pf_vector_t *delta);
+  void getNestedParticlePose(pf_vector_t *odom_pose, pf_vector_t *delta);
 
   // Current data timestamp
   private: double time;

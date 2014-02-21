@@ -230,6 +230,9 @@ private:
     ros::NodeHandle private_nh_;
     ros::Publisher pose_pub_;
     ros::Publisher particlecloud_pub_;
+
+    ros::Publisher nested_particlecloud_pub_; // For publishing cloud of nested particles
+
     ros::ServiceServer global_loc_srv_;
     ros::Subscriber initial_pose_sub_old_;
     ros::Subscriber map_sub_;
@@ -245,6 +248,7 @@ private:
     amcl::AMCLConfig default_config_;
 
     int max_beams_, min_particles_, max_particles_;
+    int min_nested_particles_, max_nested_particles_;
     double alpha1_, alpha2_, alpha3_, alpha4_, alpha5_;
     double alpha_slow_, alpha_fast_;
     double z_hit_, z_short_, z_max_, z_rand_, sigma_hit_, lambda_short_;
@@ -304,17 +308,21 @@ AmclNode::AmclNode() :
     private_nh_.param("first_map_only", first_map_only_, false);
 
     double tmp;
-    private_nh_.param("gui_publish_rate", tmp, -1.0);
+    private_nh_.param("gui_publish_rate", tmp, 10.0);
     gui_publish_period = ros::Duration(1.0/tmp);
     private_nh_.param("save_pose_rate", tmp, 0.5);
     save_pose_period = ros::Duration(1.0/tmp);
 
     private_nh_.param("laser_min_range", laser_min_range_, -1.0);
-    private_nh_.param("laser_max_range", laser_max_range_, -1.0);
-    private_nh_.param("laser_max_beams", max_beams_, 30);
-    private_nh_.param("min_particles", min_particles_, 100);
-    private_nh_.param("max_particles", max_particles_, 5000);
-    private_nh_.param("kld_err", pf_err_, 0.01);
+    private_nh_.param("laser_max_range", laser_max_range_, 4.0);
+    private_nh_.param("laser_max_beams", max_beams_, 60);
+    private_nh_.param("min_particles", min_particles_, 1);
+    private_nh_.param("max_particles", max_particles_, 2);
+
+    private_nh_.param("min_nested_particles", min_nested_particles_, 1);
+    private_nh_.param("max_nested_particles", max_nested_particles_, 1);
+
+    private_nh_.param("kld_err", pf_err_, 0.05);
     private_nh_.param("kld_z", pf_z_, 0.99);
     private_nh_.param("odom_alpha1", alpha1_, 0.2);
     private_nh_.param("odom_alpha2", alpha2_, 0.2);
@@ -322,10 +330,10 @@ AmclNode::AmclNode() :
     private_nh_.param("odom_alpha4", alpha4_, 0.2);
     private_nh_.param("odom_alpha5", alpha5_, 0.2);
 
-    private_nh_.param("laser_z_hit", z_hit_, 0.95);
-    private_nh_.param("laser_z_short", z_short_, 0.1);
+    private_nh_.param("laser_z_hit", z_hit_, 0.5);
+    private_nh_.param("laser_z_short", z_short_, 0.05);
     private_nh_.param("laser_z_max", z_max_, 0.05);
-    private_nh_.param("laser_z_rand", z_rand_, 0.05);
+    private_nh_.param("laser_z_rand", z_rand_, 0.5);
     private_nh_.param("laser_sigma_hit", sigma_hit_, 0.2);
     private_nh_.param("laser_lambda_short", lambda_short_, 0.1);
     private_nh_.param("laser_likelihood_max_dist", laser_likelihood_max_dist_, 2.0);
@@ -364,14 +372,14 @@ AmclNode::AmclNode() :
         odom_model_type_ = ODOM_MODEL_DIFF;
     }
 
-    private_nh_.param("update_min_d", d_thresh_, 0.2);
+    private_nh_.param("update_min_d", d_thresh_, 0.25);
     private_nh_.param("update_min_a", a_thresh_, M_PI/6.0);
     private_nh_.param("odom_frame_id", odom_frame_id_, std::string("odom"));
     private_nh_.param("base_frame_id", base_frame_id_, std::string("base_link"));
-    private_nh_.param("global_frame_id", global_frame_id_, std::string("map"));
-    private_nh_.param("resample_interval", resample_interval_, 2);
+    private_nh_.param("global_frame_id", global_frame_id_, std::string("/map"));
+    private_nh_.param("resample_interval", resample_interval_, 1);
     double tmp_tol;
-    private_nh_.param("transform_tolerance", tmp_tol, 0.1);
+    private_nh_.param("transform_tolerance", tmp_tol, 1.0);
     private_nh_.param("recovery_alpha_slow", alpha_slow_, 0.001);
     private_nh_.param("recovery_alpha_fast", alpha_fast_, 0.1);
 
@@ -393,6 +401,8 @@ AmclNode::AmclNode() :
 
     pose_pub_ = nh_.advertise<geometry_msgs::PoseWithCovarianceStamped>("amcl_pose", 2);
     particlecloud_pub_ = nh_.advertise<geometry_msgs::PoseArray>("particlecloud", 2);
+    nested_particlecloud_pub_ = nh_.advertise<geometry_msgs::PoseArray>("nested_particlecloud", 2);
+
     global_loc_srv_ = nh_.advertiseService("global_localization",
                                            &AmclNode::globalLocalizationCallback,
                                            this);
@@ -500,7 +510,7 @@ void AmclNode::reconfigureCB(AMCLConfig &config, uint32_t level)
                    (pf_dual_model_fn_t)AmclNode::dualMCL_PoseGenerator, //Added by KPM
                    (void *)map_,
                    //Added by KPM
-                   0, min_particles_, max_particles_);
+                   1, min_nested_particles_, max_nested_particles_);
     pf_err_ = config.kld_err;
     pf_z_ = config.kld_z;
     pf_->pop_err = pf_err_;
@@ -623,7 +633,7 @@ AmclNode::handleMapMessage(const nav_msgs::OccupancyGrid& msg)
                    (pf_dual_model_fn_t)AmclNode::dualMCL_PoseGenerator, //Added by KPM
                    (void *)map_,
                    //Added by KPM
-                   0, min_particles_, max_particles_);
+                   1, min_nested_particles_, max_nested_particles_);
     pf_->pop_err = pf_err_;
     pf_->pop_z = pf_z_;
 
@@ -1265,6 +1275,53 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
         }
 
         particlecloud_pub_.publish(cloud_msg);
+
+
+        if(pf_->nesting_lvl > 0){
+            // Publish the resulting nested particle cloud
+            // TODO: set maximum rate for publishing
+            geometry_msgs::PoseArray nested_cloud_msg;
+            nested_cloud_msg.header.stamp = ros::Time::now();
+            nested_cloud_msg.header.frame_id = global_frame_id_;
+            nested_cloud_msg.poses.resize(0);
+
+            //ROS_INFO("pf_->nesting_lvl : %d", pf_->nesting_lvl);
+
+            pf_t *nested_pf_set;
+            pf_t *nested_pf;
+
+
+            pf_sample_set_t *upper_particles_set = pf_->sets + pf_->current_set;
+            pf_sample_set_t *nested_particles_set;
+
+
+            nested_pf_set = pf_get_this_nested_set(pf_, pf_->current_set);
+
+            int total_nested_particle_count = 0;
+
+            for(int i=0; i< upper_particles_set->sample_count ; i++){
+
+                //                nested_pf_set = pf_->nested_pf_sets[i][pf_->current_set];
+                nested_pf = nested_pf_set + i;
+                nested_particles_set = nested_pf->sets + nested_pf->current_set;
+
+                nested_cloud_msg.poses.resize(nested_cloud_msg.poses.size() + nested_particles_set->sample_count);
+
+                for(int j=0;j<nested_particles_set->sample_count;j++)
+                {
+                    tf::poseTFToMsg(tf::Pose(tf::createQuaternionFromYaw(nested_particles_set->samples[j].pose.v[2]),
+                                             btVector3(nested_particles_set->samples[j].pose.v[0],
+                                                       nested_particles_set->samples[j].pose.v[1], 0)),
+                                    nested_cloud_msg.poses[total_nested_particle_count++]);
+                }
+            }
+
+            nested_particlecloud_pub_.publish(nested_cloud_msg);
+
+            ROS_INFO("normal_particles: %d \t nested_particles: %d", pf_->sets[pf_->current_set].sample_count, total_nested_particle_count);
+        }
+
+
     }
 
 

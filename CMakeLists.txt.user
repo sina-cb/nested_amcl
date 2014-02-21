@@ -151,7 +151,7 @@
      <value type="int">13</value>
      <value type="int">14</value>
     </valuelist>
-    <value key="CMakeProjectManager.BaseEnvironmentBase" type="int">2</value>
+    <value key="CMakeProjectManager.BaseEnvironmentBase" type="int">1</value>
     <value key="CMakeProjectManager.CMakeRunConfiguation.Title" type="QString">bin/nested_amcl</value>
     <value key="CMakeProjectManager.CMakeRunConfiguration.Arguments" type="QString"></value>
     <value key="CMakeProjectManager.CMakeRunConfiguration.UseTerminal" type="bool">false</value>

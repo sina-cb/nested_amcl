@@ -202,46 +202,47 @@ bool AMCLOdom::UpdateAction(pf_t *pf, AMCLSensorData *data)
       AMCLOdomData *nested_odomData;
       pf_t *nested_pf_set, *nested_pf_sample;
 
-      nested_pf_set = pf->nested_pf_sets[pf->current_set];
+      nested_pf_set = pf_get_this_nested_set(pf, pf->current_set);
 
       nested_odomData->pose = pf->fake_nested_odomPose;
       nested_odomData->delta = pf->fake_nested_odomDelta;
 
-
-
-      getNestedParticlePose(&nested_odomData->delta);
+      getNestedParticlePose(&nested_odomData->pose, &nested_odomData->delta);
 
       for(int i=0; i< set->sample_count; i++){
           nested_pf_sample = nested_pf_set + i;
           this->UpdateAction(nested_pf_sample, (AMCLSensorData*)nested_odomData);
       }
-
   }
-
   return true;
 }
 
 
-void AMCLOdom::getNestedParticlePose(pf_vector_t *delta){
+void AMCLOdom::getNestedParticlePose(pf_vector_t *odom_pose, pf_vector_t *delta){
 
   double dice = drand48() * 100;
 
+  double delta_trans = 0.01;
+
   if(dice < 90){
-      delta->v[0] = 0.05;
-      delta->v[1] = 0.05;
+
+      delta->v[0] = cos(odom_pose->v[2]) * delta_trans;
+      delta->v[1] = sin(odom_pose->v[2]) * delta_trans;
       delta->v[2] = 0.00;
   }
   else if(dice < 95){
       delta->v[0] = 0.00;
       delta->v[1] = 0.00;
-      delta->v[2] = 0.50;
+      delta->v[2] = (M_PI/6);
   }
 
   else{
       delta->v[0] = 0.00;
       delta->v[1] = 0.00;
-      delta->v[2] = -0.50;
+      delta->v[2] = -(M_PI/6);
   }
+
+  *odom_pose = pf_vector_add(*odom_pose, *delta);
 
   return;
 }

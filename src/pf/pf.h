@@ -139,10 +139,6 @@ typedef struct _pf_t
     Nested Particle Filtering related modifications
     */
 
-    // There are two sets of particle filters per set of particles
-    // Each set of pfs has one particle filter for every particle in current pf.
-
-    struct _pf_t* nested_pf_sets[2];
 
     // nesting_lvl determines if we need nested particles in current pf
     // At the highest level, i.e. robot_i's particles...the lvl will be highest (1 in current case).
@@ -169,6 +165,18 @@ typedef struct _pf_t
     pf_dual_model_fn_t dual_pose_fn;
 
     void *random_pose_data;
+
+    // There are two sets of particle filters per set of particles
+    // Each set of pfs has one particle filter for every particle in current pf.
+
+
+    struct _pf_t *nested_pf_set_0;
+    struct _pf_t *nested_pf_set_1;
+
+    //struct _pf_t *nested_pf_sets[][2];
+
+
+
 } pf_t;
 
 
@@ -182,6 +190,20 @@ pf_t *pf_alloc(int min_samples, int max_samples,
                int nesting_level,
                int min_nested_samples, int max_nested_samples
                );
+
+
+
+void pf_nested_alloc(pf_t* pf, int min_samples, int max_samples,
+               double alpha_slow, double alpha_fast,
+               pf_init_model_fn_t random_pose_fn,
+               pf_dual_model_fn_t dual_pose_fn, //Added by KPM
+               void *random_pose_data,
+               //Added by KPM
+               int nesting_level,
+               int min_nested_samples, int max_nested_samples
+               );
+
+
 
 // Free an existing filter
 void pf_free(pf_t *pf);
@@ -199,6 +221,10 @@ void pf_update_action(pf_t *pf, pf_action_model_fn_t action_fn, void *action_dat
 
 // Update the filter with some new sensor observation
 void pf_update_sensor(pf_t *pf, pf_sensor_model_fn_t sensor_fn, void *sensor_data);
+
+// Update the nested filter with some new sensor observation
+void pf_update_nested_sensor(pf_t *pf, pf_sensor_model_fn_t sensor_fn, void *sensor_data);
+
 
 // Resample the distribution
 void pf_update_resample(pf_t *pf, double landmark_r, double landmark_phi, double landmark_x, double landmark_y); //KPM adding r and phi of landmark
@@ -222,6 +248,10 @@ void pf_draw_cep_stats(pf_t *pf, struct _rtk_fig_t *fig);
 
 // Draw the cluster statistics
 void pf_draw_cluster_stats(pf_t *pf, struct _rtk_fig_t *fig);
+
+
+pf_t* pf_get_this_nested_set(pf_t *pf, int current_set);
+pf_t* pf_get_other_nested_set(pf_t *pf, int current_set);
 
 #ifdef __cplusplus
 }
