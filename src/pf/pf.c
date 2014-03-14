@@ -47,6 +47,9 @@ static void pf_cluster_stats(pf_sample_set_t *set);
 // Copy one filter into another
 static void pf_copy(pf_t *pf_source, pf_t *pf_dest);
 
+// Normalize all the weights inside given pf using the total provided
+static void normalize_weights(double total, pf_t* pf);
+
 // Create a new filter
 pf_t *pf_alloc(int min_samples, int max_samples,
                double alpha_slow, double alpha_fast,
@@ -76,6 +79,7 @@ pf_t *pf_alloc(int min_samples, int max_samples,
     //Added by KPM
     pf->dual_pose_fn = dual_pose_fn;
     pf->nesting_lvl = nesting_level;
+    pf->isNested = 0;
 
 
     pf->min_samples = min_samples;
@@ -171,15 +175,15 @@ pf_t *pf_alloc(int min_samples, int max_samples,
 
 // Create a new filter
 void pf_nested_alloc(pf_t *pf, int min_samples, int max_samples,
-                      double alpha_slow, double alpha_fast,
-                      pf_init_model_fn_t random_pose_fn,
-                      pf_dual_model_fn_t dual_pose_fn, //Added by KPM
-                      void *random_pose_data,
+                     double alpha_slow, double alpha_fast,
+                     pf_init_model_fn_t random_pose_fn,
+                     pf_dual_model_fn_t dual_pose_fn, //Added by KPM
+                     void *random_pose_data,
 
-                      //Added by KPM
-                      int nesting_level,
-                      int min_nested_samples, int max_nested_samples
-                      )
+                     //Added by KPM
+                     int nesting_level,
+                     int min_nested_samples, int max_nested_samples
+                     )
 {
     int i, j;
     //pf_t *pf;
@@ -198,6 +202,7 @@ void pf_nested_alloc(pf_t *pf, int min_samples, int max_samples,
     //Added by KPM
     pf->dual_pose_fn = dual_pose_fn;
     pf->nesting_lvl = nesting_level;
+    pf->isNested = 1;
 
 
     pf->min_samples = min_samples;
@@ -439,15 +444,18 @@ void pf_update_action(pf_t *pf, pf_action_model_fn_t action_fn, void *action_dat
 // Update the filter with some new sensor observation
 void pf_update_sensor(pf_t *pf, pf_sensor_model_fn_t sensor_fn, void *sensor_data)
 {
-    int i;
+    //int i;
     pf_sample_set_t *set;
-    pf_sample_t *sample;
+    //pf_sample_t *sample;
     double total;
 
     set = pf->sets + pf->current_set;
 
     // Compute the sample weights
     total = (*sensor_fn) (sensor_data, set);
+
+    normalize_weights(total, pf);
+    /*
 
     if (total > 0.0)
     {
@@ -483,15 +491,20 @@ void pf_update_sensor(pf_t *pf, pf_sensor_model_fn_t sensor_fn, void *sensor_dat
             sample->weight = 1.0 / set->sample_count;
         }
     }
+
+    */
 
     return;
 }
 
 
 // Update the filter with some new sensor observation
-void pf_update_nested_sensor(pf_t *pf, pf_sensor_model_fn_t sensor_fn, void *sensor_data)
+void pf_update_nested_sensor(pf_t *pf,
+                             pf_sensor_model_fn_t sensor_fn,
+                             pf_nested_sensor_model_fn_t nested_sensor_fn,
+                             void *sensor_data)
 {
-    int i;
+    //int i;
     pf_sample_set_t *set;
     pf_sample_t *sample;
     double total;
@@ -501,6 +514,9 @@ void pf_update_nested_sensor(pf_t *pf, pf_sensor_model_fn_t sensor_fn, void *sen
     // Compute the sample weights
     total = (*sensor_fn) (sensor_data, set);
 
+    normalize_weights(total, pf);
+
+    /*
     if (total > 0.0)
     {
         // Normalize weights
@@ -536,9 +552,66 @@ void pf_update_nested_sensor(pf_t *pf, pf_sensor_model_fn_t sensor_fn, void *sen
         }
     }
 
+    */
+
+    if(pf->nesting_lvl > 0){
+        int i = 0;
+        for(i=0; i<set->sample_count; i++){
+            sample = set->samples + i;
+            pf_t * nested_pf_set = pf_get_this_nested_set(pf, pf->current_set);
+            pf_sample_set_t nested_set = nested_pf_set->sets[nested_pf_set->current_set];
+            int nested_total = (*nested_sensor_fn) (sample, sensor_data, &nested_set);
+            normalize_weights(nested_total, nested_pf_set);
+        }
+    }
+
     return;
 }
 
+
+
+static void normalize_weights(double total, pf_t* pf){
+
+    int i;
+    pf_sample_set_t *set;
+    pf_sample_t *sample;
+
+    set = pf->sets + pf->current_set;
+    if (total > 0.0)
+    {
+        // Normalize weights
+        double w_avg=0.0;
+        for (i = 0; i < set->sample_count; i++)
+        {
+            sample = set->samples + i;
+            w_avg += sample->weight;
+            sample->weight /= total;
+        }
+        // Update running averages of likelihood of samples (Prob Rob p258)
+        w_avg /= set->sample_count;
+        if(pf->w_slow == 0.0)
+            pf->w_slow = w_avg;
+        else
+            pf->w_slow += pf->alpha_slow * (w_avg - pf->w_slow);
+        if(pf->w_fast == 0.0)
+            pf->w_fast = w_avg;
+        else
+            pf->w_fast += pf->alpha_fast * (w_avg - pf->w_fast);
+        //printf("w_avg: %e slow: %e fast: %e\n",
+        //w_avg, pf->w_slow, pf->w_fast);
+    }
+    else
+    {
+        //PLAYER_WARN("pdf has zero probability");
+
+        // Handle zero total
+        for (i = 0; i < set->sample_count; i++)
+        {
+            sample = set->samples + i;
+            sample->weight = 1.0 / set->sample_count;
+        }
+    }
+}
 
 
 
@@ -599,23 +672,33 @@ void pf_update_resample(pf_t *pf, double landmark_r, double landmark_phi, double
 
         //    if(drand48() < w_diff){
 
-        if( (DUAL_MCL == 1) && ((drand48() < 0.05) && (landmark_r > 0)) ){
-            //KPM..this is the original random sampling function
-            //sample_b->pose = (pf->random_pose_fn)(pf->random_pose_data);
+        if( (pf->isNested != 0) && drand48() < 0.05 ){
+            if( (DUAL_MCL == 1)  && (landmark_r > 0) ){
+                //KPM..this is the original random sampling function
+                //sample_b->pose = (pf->random_pose_fn)(pf->random_pose_data);
 
-            //KPM ...trying dual sampling instead of random sampling
-            sample_b->pose = (pf->dual_pose_fn)(pf->random_pose_data, landmark_r, landmark_phi, landmark_x, landmark_y);
+                //KPM ...trying dual sampling instead of random sampling
+                sample_b->pose = (pf->dual_pose_fn)(pf->random_pose_data, landmark_r, landmark_phi, landmark_x, landmark_y);
+            }
+            else{
+                sample_b->pose = (pf->random_pose_fn)(pf->random_pose_data);
+            }
         }
 
+
         else{
+             // Recovery for normal particles
             if(drand48() < w_diff){
 
                 if(DUAL_MCL != 1){ //Added by KPM to take random samples only when DUAL is turned off. Originally this condition was absent
                     sample_b->pose = (pf->random_pose_fn)(pf->random_pose_data);
                 }
+                else{
+                    //KPM ...trying dual sampling instead of random sampling
+                    sample_b->pose = (pf->dual_pose_fn)(pf->random_pose_data, landmark_r, landmark_phi, landmark_x, landmark_y);
+                }
 
             }
-
 
             else
             {
@@ -659,7 +742,6 @@ void pf_update_resample(pf_t *pf, double landmark_r, double landmark_phi, double
 
             }
         }
-
 
 
         sample_b->weight = 1.0;
@@ -924,7 +1006,21 @@ static void pf_copy(pf_t *pf_source, pf_t *pf_dest)
 
     for(i = 0; i < 2 ; i++){
         pf_dest->sets[i].sample_count = pf_source->sets[i].sample_count;
-        pf_dest->sets[i].samples = pf_source->sets[i].samples;
+
+         // This might be causing several different nested particles to point to same pool of samples
+        //pf_dest->sets[i].samples = pf_source->sets[i].samples;
+
+        int j=0;
+        pf_dest->sets[i].samples = calloc(pf_source->sets[i].sample_count, sizeof(pf_sample_t));
+        pf_sample_t* new_samples = pf_dest->sets[i].samples;
+        pf_sample_t* old_samples = pf_source->sets[i].samples;
+        for(j=0; j<pf_dest->sets[i].sample_count ; j++ ){
+            new_samples = new_samples + j;
+            old_samples = old_samples + j;
+
+            new_samples->pose = old_samples->pose;
+            new_samples->weight = old_samples->weight;
+        }
 
         pf_dest->sets[i].kdtree = pf_source->sets[i].kdtree;
 

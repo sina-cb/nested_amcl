@@ -1277,6 +1277,9 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
         particlecloud_pub_.publish(cloud_msg);
 
 
+
+        /** Publish the nested particle cloud **/
+
         if(pf_->nesting_lvl > 0){
             // Publish the resulting nested particle cloud
             // TODO: set maximum rate for publishing
@@ -1313,12 +1316,17 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
                                              btVector3(nested_particles_set->samples[j].pose.v[0],
                                                        nested_particles_set->samples[j].pose.v[1], 0)),
                                     nested_cloud_msg.poses[total_nested_particle_count++]);
+                    ROS_INFO("upper_lvl_particle: %d | nested_particle: %d ----- nested pose: %0.3f, %0.3f, %0.3f",
+                             i, j,
+                             nested_particles_set->samples[j].pose.v[0],
+                             nested_particles_set->samples[j].pose.v[1],
+                             nested_particles_set->samples[j].pose.v[2]);
                 }
             }
 
             nested_particlecloud_pub_.publish(nested_cloud_msg);
 
-            ROS_INFO("normal_particles: %d \t nested_particles: %d", pf_->sets[pf_->current_set].sample_count, total_nested_particle_count);
+            //ROS_INFO("normal_particles: %d \t nested_particles: %d", pf_->sets[pf_->current_set].sample_count, total_nested_particle_count);
         }
 
 

@@ -69,6 +69,8 @@ typedef double (*pf_sensor_model_fn_t) (void *sensor_data,
                                         struct _pf_sample_set_t* set);
 
 
+
+
 // Information for a single sample
 typedef struct
 {
@@ -79,6 +81,14 @@ typedef struct
     double weight;
 
 } pf_sample_t;
+
+
+
+
+// Function prototype for the nested sensor model; determines the probability
+// for the given set of sample poses of nested particles.
+typedef double (*pf_nested_sensor_model_fn_t) (pf_sample_t* upper_particle, void *sensor_data,
+                                        struct _pf_sample_set_t* set);
 
 
 // Information for a cluster of samples
@@ -148,6 +158,7 @@ typedef struct _pf_t
     int nesting_lvl;
     int min_nested_samples;
     int max_nested_samples;
+    int isNested; // 0 when this pf is not a nested pf, 1 otherwise
 
     pf_vector_t fake_nested_odomPose;
     pf_vector_t fake_nested_odomDelta;
@@ -223,7 +234,7 @@ void pf_update_action(pf_t *pf, pf_action_model_fn_t action_fn, void *action_dat
 void pf_update_sensor(pf_t *pf, pf_sensor_model_fn_t sensor_fn, void *sensor_data);
 
 // Update the nested filter with some new sensor observation
-void pf_update_nested_sensor(pf_t *pf, pf_sensor_model_fn_t sensor_fn, void *sensor_data);
+void pf_update_nested_sensor(pf_t *pf, pf_sensor_model_fn_t sensor_fn, pf_nested_sensor_model_fn_t nested_sensor_fn, void *sensor_data);
 
 
 // Resample the distribution

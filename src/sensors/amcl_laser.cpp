@@ -46,25 +46,25 @@ using namespace amcl;
 // Default constructor
 AMCLLaser::AMCLLaser(size_t max_beams, map_t* map) : AMCLSensor()
 {
-  this->time = 0.0;
+    this->time = 0.0;
 
-  this->max_beams = max_beams;
-  this->map = map;
+    this->max_beams = max_beams;
+    this->map = map;
 
-  return;
+    return;
 }
 
 
 // Default constructor with color_map added
 AMCLLaser::AMCLLaser(size_t max_beams, map_t* map, map_t* color_map) : AMCLSensor()
 {
-  this->time = 0.0;
+    this->time = 0.0;
 
-  this->max_beams = max_beams;
-  this->map = map;
-  this->color_map = color_map;
+    this->max_beams = max_beams;
+    this->map = map;
+    this->color_map = color_map;
 
-  return;
+    return;
 }
 
 
@@ -79,14 +79,14 @@ AMCLLaser::SetModelBeam(double z_hit,
                         double lambda_short,
                         double chi_outlier)
 {
-  this->model_type = LASER_MODEL_BEAM;
-  this->z_hit = z_hit;
-  this->z_short = z_short;
-  this->z_max = z_max;
-  this->z_rand = z_rand;
-  this->sigma_hit = sigma_hit;
-  this->lambda_short = lambda_short;
-  this->chi_outlier = chi_outlier;
+    this->model_type = LASER_MODEL_BEAM;
+    this->z_hit = z_hit;
+    this->z_short = z_short;
+    this->z_max = z_max;
+    this->z_rand = z_rand;
+    this->sigma_hit = sigma_hit;
+    this->lambda_short = lambda_short;
+    this->chi_outlier = chi_outlier;
 }
 
 void
@@ -95,14 +95,14 @@ AMCLLaser::SetModelLikelihoodField(double z_hit,
                                    double sigma_hit,
                                    double max_occ_dist)
 {
-  this->model_type = LASER_MODEL_LIKELIHOOD_FIELD;
-  this->z_hit = z_hit;
-  this->z_max = z_max;
-  this->z_rand = z_rand;
-  this->sigma_hit = sigma_hit;
+    this->model_type = LASER_MODEL_LIKELIHOOD_FIELD;
+    this->z_hit = z_hit;
+    this->z_max = z_max;
+    this->z_rand = z_rand;
+    this->sigma_hit = sigma_hit;
 
-  map_update_cspace(this->map, max_occ_dist);
-  map_update_cspace(this->color_map, max_occ_dist);
+    map_update_cspace(this->map, max_occ_dist);
+    map_update_cspace(this->color_map, max_occ_dist);
 }
 
 
@@ -110,31 +110,40 @@ AMCLLaser::SetModelLikelihoodField(double z_hit,
 // Apply the laser sensor model
 bool AMCLLaser::UpdateSensor(pf_t *pf, AMCLSensorData *data)
 {
-  AMCLLaserData *ndata;
+    AMCLLaserData *ndata;
 
-  ndata = (AMCLLaserData*) data;
-  if (this->max_beams < 2)
-    return false;
+    ndata = (AMCLLaserData*) data;
+    if (this->max_beams < 2)
+        return false;
 
-  // Apply the laser sensor model
-  if(this->model_type == LASER_MODEL_BEAM)
-    pf_update_sensor(pf, (pf_sensor_model_fn_t) BeamModel, data);
-  else if(this->model_type == LASER_MODEL_LIKELIHOOD_FIELD)
-    pf_update_sensor(pf, (pf_sensor_model_fn_t) LikelihoodFieldModel, data);
-  else
-    pf_update_sensor(pf, (pf_sensor_model_fn_t) BeamModel, data);
+    // Apply the laser sensor model
+//    if(pf->nesting_lvl == 0){
+        if(this->model_type == LASER_MODEL_BEAM)
+            pf_update_sensor(pf, (pf_sensor_model_fn_t) BeamModel, data);
+        else if(this->model_type == LASER_MODEL_LIKELIHOOD_FIELD)
+            pf_update_sensor(pf, (pf_sensor_model_fn_t) LikelihoodFieldModel, data);
+        else
+            pf_update_sensor(pf, (pf_sensor_model_fn_t) BeamModel, data);
+//    }
 
+//    else{
+//        if(this->model_type == LASER_MODEL_BEAM)
+//            pf_update_nested_sensor(pf, (pf_sensor_model_fn_t) BeamModel, (pf_sensor_model_fn_t) NestedBeamModel, data);
+//        else if(this->model_type == LASER_MODEL_LIKELIHOOD_FIELD)
+//            pf_update_nested_sensor(pf, (pf_sensor_model_fn_t) LikelihoodFieldModel, (pf_sensor_model_fn_t) NestedBeamModel, data);
+//        else
+//            pf_update_nested_sensor(pf, (pf_sensor_model_fn_t) BeamModel, (pf_sensor_model_fn_t) NestedBeamModel, data);
+//    }
+    if(pf->nesting_lvl > 0){
+        for(int i=0; i < pf->sets[pf->current_set].sample_count ; i++){
+            pf_t *nested_pf_set, *nested_pf;
+            nested_pf_set = pf_get_this_nested_set(pf, pf->current_set);
+            nested_pf = nested_pf_set + i;
+            pf_update_sensor(nested_pf, (pf_sensor_model_fn_t) NestedBeamModel, data);
+        }
+    }
 
-  if(pf->nesting_lvl > 0){
-      for(int i=0; i < pf->sets[pf->current_set].sample_count ; i++){
-          pf_t *nested_pf_set, *nested_pf;
-          nested_pf_set = pf_get_this_nested_set(pf, pf->current_set);
-          nested_pf = nested_pf_set + i;
-          pf_update_sensor(nested_pf, (pf_sensor_model_fn_t) LikelihoodFieldModel, data);
-      }
-  }
-
-  return true;
+    return true;
 }
 
 
@@ -142,193 +151,193 @@ bool AMCLLaser::UpdateSensor(pf_t *pf, AMCLSensorData *data)
 // Determine the probability for the given pose
 double AMCLLaser::BeamModel(AMCLLaserData *data, pf_sample_set_t* set)
 {
-  AMCLLaser *self;
-  int i, j, step;
-  double z, pz;
-  double p;
-  double map_range;
-  double obs_range, obs_bearing;
-  double total_weight;
-  pf_sample_t *sample;
-  pf_vector_t pose;
+    AMCLLaser *self;
+    int i, j, step;
+    double z, pz;
+    double p;
+    double map_range;
+    double obs_range, obs_bearing;
+    double total_weight;
+    pf_sample_t *sample;
+    pf_vector_t pose;
 
-  self = (AMCLLaser*) data->sensor;
+    self = (AMCLLaser*) data->sensor;
 
-  total_weight = 0.0;
+    total_weight = 0.0;
 
-  // Compute the sample weights
-  for (j = 0; j < set->sample_count; j++)
-  {
-    sample = set->samples + j;
-    pose = sample->pose;
-
-    // Take account of the laser pose relative to the robot
-    pose = pf_vector_coord_add(self->laser_pose, pose);
-
-    p = 1.0;
-
-    step = (data->range_count - 1) / (self->max_beams - 1);
-    for (i = 0; i < data->range_count; i += step)
+    // Compute the sample weights
+    for (j = 0; j < set->sample_count; j++)
     {
-      obs_range = data->ranges[i][0];
-      obs_bearing = data->ranges[i][1];
+        sample = set->samples + j;
+        pose = sample->pose;
+
+        // Take account of the laser pose relative to the robot
+        pose = pf_vector_coord_add(self->laser_pose, pose);
+
+        p = 1.0;
+
+        step = (data->range_count - 1) / (self->max_beams - 1);
+        for (i = 0; i < data->range_count; i += step)
+        {
+            obs_range = data->ranges[i][0];
+            obs_bearing = data->ranges[i][1];
 
 
-      //@KPM TODO : add color testing to map_calc_range here
+            //@KPM TODO : add color testing to map_calc_range here
 
-      // Compute the range according to the map
-      map_range = map_calc_range(self->map, pose.v[0], pose.v[1],
-                                 pose.v[2] + obs_bearing, data->range_max);
-      pz = 0.0;
+            // Compute the range according to the map
+            map_range = map_calc_range(self->map, pose.v[0], pose.v[1],
+                                       pose.v[2] + obs_bearing, data->range_max);
+            pz = 0.0;
 
-      // Part 1: good, but noisy, hit
-      z = obs_range - map_range;
-      pz += self->z_hit * exp(-(z * z) / (2 * self->sigma_hit * self->sigma_hit));
+            // Part 1: good, but noisy, hit
+            z = obs_range - map_range;
+            pz += self->z_hit * exp(-(z * z) / (2 * self->sigma_hit * self->sigma_hit));
 
-      // Part 2: short reading from unexpected obstacle (e.g., a person)
-      if(z < 0)
-        pz += self->z_short * self->lambda_short * exp(-self->lambda_short*obs_range);
+            // Part 2: short reading from unexpected obstacle (e.g., a person)
+            if(z < 0)
+                pz += self->z_short * self->lambda_short * exp(-self->lambda_short*obs_range);
 
-      // Part 3: Failure to detect obstacle, reported as max-range
-      if(obs_range == data->range_max)
-        pz += self->z_max * 1.0;
+            // Part 3: Failure to detect obstacle, reported as max-range
+            if(obs_range == data->range_max)
+                pz += self->z_max * 1.0;
 
-      // Part 4: Random measurements
-      if(obs_range < data->range_max)
-        pz += self->z_rand * 1.0/data->range_max;
+            // Part 4: Random measurements
+            if(obs_range < data->range_max)
+                pz += self->z_rand * 1.0/data->range_max;
 
-      // TODO: outlier rejection for short readings
+            // TODO: outlier rejection for short readings
 
-      assert(pz <= 1.0);
-      assert(pz >= 0.0);
-      //      p *= pz;
-      // here we have an ad-hoc weighting scheme for combining beam probs
-      // works well, though...
-      p += pz*pz*pz;
+            assert(pz <= 1.0);
+            assert(pz >= 0.0);
+            //      p *= pz;
+            // here we have an ad-hoc weighting scheme for combining beam probs
+            // works well, though...
+            p += pz*pz*pz;
+        }
+
+        sample->weight *= p;
+        total_weight += sample->weight;
     }
 
-    sample->weight *= p;
-    total_weight += sample->weight;
-  }
-
-  return(total_weight);
+    return(total_weight);
 }
 
 double AMCLLaser::LikelihoodFieldModel(AMCLLaserData *data, pf_sample_set_t* set)
 {
-  AMCLLaser *self;
-  int i, j, step;
-  double z, pz;
-  double color_z; //, color_pz; //KPM: using the same pz for both (combining earlier itself)
-  double p;
-  double obs_range, obs_bearing, obs_color;
-  double total_weight;
-  pf_sample_t *sample;
-  pf_vector_t pose;
-  pf_vector_t hit;
+    AMCLLaser *self;
+    int i, j, step;
+    double z, pz;
+    double color_z; //, color_pz; //KPM: using the same pz for both (combining earlier itself)
+    double p;
+    double obs_range, obs_bearing, obs_color;
+    double total_weight;
+    pf_sample_t *sample;
+    pf_vector_t pose;
+    pf_vector_t hit;
 
-  self = (AMCLLaser*) data->sensor;
+    self = (AMCLLaser*) data->sensor;
 
-  total_weight = 0.0;
+    total_weight = 0.0;
 
-  // Compute the sample weights
-  for (j = 0; j < set->sample_count; j++)
-  {
-    sample = set->samples + j;
-    pose = sample->pose;
-
-    // Take account of the laser pose relative to the robot
-    pose = pf_vector_coord_add(self->laser_pose, pose);
-
-    p = 1.0;
-
-    // Pre-compute a couple of things
-    double z_hit_denom = 2 * self->sigma_hit * self->sigma_hit;
-    double z_rand_mult = 1.0/data->range_max;
-
-    step = (data->range_count - 1) / (self->max_beams - 1);
-    for (i = 0; i < data->range_count; i += step)
+    // Compute the sample weights
+    for (j = 0; j < set->sample_count; j++)
     {
-      obs_range = data->ranges[i][0];
-      obs_bearing = data->ranges[i][1];
-      obs_color = data->ranges[i][2];
+        sample = set->samples + j;
+        pose = sample->pose;
 
-      // This model ignores max range readings
-      if(obs_range >= data->range_max)
-        continue;
+        // Take account of the laser pose relative to the robot
+        pose = pf_vector_coord_add(self->laser_pose, pose);
 
-      pz = 0.0;
+        p = 1.0;
 
-      // Compute the endpoint of the beam
-      hit.v[0] = pose.v[0] + obs_range * cos(pose.v[2] + obs_bearing);
-      hit.v[1] = pose.v[1] + obs_range * sin(pose.v[2] + obs_bearing);
+        // Pre-compute a couple of things
+        double z_hit_denom = 2 * self->sigma_hit * self->sigma_hit;
+        double z_rand_mult = 1.0/data->range_max;
 
-      // Convert to map grid coords.
-      int mi, mj;
-      mi = MAP_GXWX(self->map, hit.v[0]);
-      mj = MAP_GYWY(self->map, hit.v[1]);
+        step = (data->range_count - 1) / (self->max_beams - 1);
+        for (i = 0; i < data->range_count; i += step)
+        {
+            obs_range = data->ranges[i][0];
+            obs_bearing = data->ranges[i][1];
+            obs_color = data->ranges[i][2];
 
-      // Part 1: Get distance from the hit to closest obstacle.
-      // Off-map penalized as max distance
-      if( ( !MAP_VALID(self->map, mi, mj) || (self->map->cells[MAP_INDEX(self->map,mi,mj)].occ_state > -1) )){
-        z = self->map->max_occ_dist;
-        color_z = self->color_map->max_occ_dist;
-      }
-      else{
-        z = self->map->cells[MAP_INDEX(self->map,mi,mj)].occ_dist;
-        color_z = self->color_map->cells[MAP_INDEX(self->color_map, mi,mj)].occ_dist;
-      }
+            // This model ignores max range readings
+            if(obs_range >= data->range_max)
+                continue;
 
-      if(obs_color == 50.0){   // KPM: adding checking for color matches
+            pz = 0.0;
 
-          // Gaussian model
-          // NOTE: this should have a normalization of 1/(sqrt(2pi)*sigma)
-          if(LASER_WEIGHTAGE == 1){
-            pz = pz + (self->z_hit * exp(-(z * z) / z_hit_denom));
-          }
-          if(COLOR_WEIGHTAGE == 1){
-              pz *= (self->z_hit * exp(-(color_z * color_z) / z_hit_denom));
-          }
+            // Compute the endpoint of the beam
+            hit.v[0] = pose.v[0] + obs_range * cos(pose.v[2] + obs_bearing);
+            hit.v[1] = pose.v[1] + obs_range * sin(pose.v[2] + obs_bearing);
+
+            // Convert to map grid coords.
+            int mi, mj;
+            mi = MAP_GXWX(self->map, hit.v[0]);
+            mj = MAP_GYWY(self->map, hit.v[1]);
+
+            // Part 1: Get distance from the hit to closest obstacle.
+            // Off-map penalized as max distance
+            if( ( !MAP_VALID(self->map, mi, mj) || (self->map->cells[MAP_INDEX(self->map,mi,mj)].occ_state > -1) )){
+                z = self->map->max_occ_dist;
+                color_z = self->color_map->max_occ_dist;
+            }
+            else{
+                z = self->map->cells[MAP_INDEX(self->map,mi,mj)].occ_dist;
+                color_z = self->color_map->cells[MAP_INDEX(self->color_map, mi,mj)].occ_dist;
+            }
+
+            if(obs_color == 50.0){   // KPM: adding checking for color matches
+
+                // Gaussian model
+                // NOTE: this should have a normalization of 1/(sqrt(2pi)*sigma)
+                if(LASER_WEIGHTAGE == 1){
+                    pz = pz + (self->z_hit * exp(-(z * z) / z_hit_denom));
+                }
+                if(COLOR_WEIGHTAGE == 1){
+                    pz *= (self->z_hit * exp(-(color_z * color_z) / z_hit_denom));
+                }
 
 
-          // Part 2: random measurements
-          pz = pz + (self->z_rand * z_rand_mult) *(self->z_rand * z_rand_mult);
+                // Part 2: random measurements
+                pz = pz + (self->z_rand * z_rand_mult) *(self->z_rand * z_rand_mult);
 
+            }
+
+            else{   // KPM: adding checking for color matches
+
+                // Gaussian model
+                // NOTE: this should have a normalization of 1/(sqrt(2pi)*sigma)
+                if(LASER_WEIGHTAGE == 1){
+                    pz = pz + (self->z_hit * exp(-(z * z) / z_hit_denom));
+                }
+                if(COLOR_WEIGHTAGE == 1){
+                    pz *= (1- (self->z_hit * exp(-(color_z * color_z) / z_hit_denom)));
+                }
+
+
+                // Part 2: random measurements
+                pz = pz + (self->z_rand * z_rand_mult) *(self->z_rand * z_rand_mult);
+            }
+
+
+            // TODO: outlier rejection for short readings
+
+            assert(pz <= 1.0);
+            assert(pz >= 0.0);
+            //      p *= pz;
+            // here we have an ad-hoc weighting scheme for combining beam probs
+            // works well, though...
+            p += pz*pz*pz;
         }
 
-      else{   // KPM: adding checking for color matches
-
-            // Gaussian model
-            // NOTE: this should have a normalization of 1/(sqrt(2pi)*sigma)
-          if(LASER_WEIGHTAGE == 1){
-            pz = pz + (self->z_hit * exp(-(z * z) / z_hit_denom));
-          }
-          if(COLOR_WEIGHTAGE == 1){
-              pz *= (1- (self->z_hit * exp(-(color_z * color_z) / z_hit_denom)));
-          }
-
-
-          // Part 2: random measurements
-          pz = pz + (self->z_rand * z_rand_mult) *(self->z_rand * z_rand_mult);
-      }
-
-
-      // TODO: outlier rejection for short readings
-
-      assert(pz <= 1.0);
-      assert(pz >= 0.0);
-      //      p *= pz;
-      // here we have an ad-hoc weighting scheme for combining beam probs
-      // works well, though...
-      p += pz*pz*pz;
+        sample->weight *= p;
+        //ROS_INFO("sample weight: %f", sample->weight);
+        total_weight += sample->weight;
     }
 
-    sample->weight *= p;
-    //ROS_INFO("sample weight: %f", sample->weight);
-    total_weight += sample->weight;
-  }
-
-  return(total_weight);
+    return(total_weight);
 }
 
 
@@ -338,74 +347,74 @@ double AMCLLaser::LikelihoodFieldModel(AMCLLaserData *data, pf_sample_set_t* set
 // Determine the probability of nested particles for the given pose
 double AMCLLaser::NestedBeamModel(AMCLLaserData *data, pf_sample_set_t* set)
 {
-  AMCLLaser *self;
-  int i, j, step;
-  double z, pz;
-  double p;
-  double map_range;
-  double obs_range, obs_bearing;
-  double total_weight;
-  pf_sample_t *sample;
-  pf_vector_t pose;
+    AMCLLaser *self;
+    int i, j, step;
+    double z, pz;
+    double p;
+    double map_range;
+    double obs_range, obs_bearing;
+    double total_weight;
+    pf_sample_t *sample;
+    pf_vector_t pose;
 
-  self = (AMCLLaser*) data->sensor;
+    self = (AMCLLaser*) data->sensor;
 
-  total_weight = 0.0;
+    total_weight = 0.0;
 
-  // Compute the sample weights
-  for (j = 0; j < set->sample_count; j++)
-  {
-    sample = set->samples + j;
-    pose = sample->pose;
-
-    // Take account of the laser pose relative to the robot
-    pose = pf_vector_coord_add(self->laser_pose, pose);
-
-    p = 1.0;
-
-    step = (data->range_count - 1) / (self->max_beams - 1);
-    for (i = 0; i < data->range_count; i += step)
+    // Compute the sample weights
+    for (j = 0; j < set->sample_count; j++)
     {
-      obs_range = data->ranges[i][0];
-      obs_bearing = data->ranges[i][1];
+        sample = set->samples + j;
+        pose = sample->pose;
+
+        // Take account of the laser pose relative to the robot
+        pose = pf_vector_coord_add(self->laser_pose, pose);
+
+        p = 1.0;
+
+        step = (data->range_count - 1) / (self->max_beams - 1);
+        for (i = 0; i < data->range_count; i += step)
+        {
+            obs_range = data->ranges[i][0];
+            obs_bearing = data->ranges[i][1];
 
 
-      //@KPM TODO : add color testing to map_calc_range here
+            //@KPM TODO : add color testing to map_calc_range here
 
-      // Compute the range according to the map
-      map_range = map_calc_range(self->map, pose.v[0], pose.v[1],
-                                 pose.v[2] + obs_bearing, data->range_max);
-      pz = 0.0;
+            // Compute the range according to the map
+            map_range = map_calc_range(self->map, pose.v[0], pose.v[1],
+                                       pose.v[2] + obs_bearing, data->range_max);
+            pz = 0.0;
 
-      // Part 1: good, but noisy, hit
-      z = obs_range - map_range;
-      pz += self->z_hit * exp(-(z * z) / (2 * self->sigma_hit * self->sigma_hit));
+            // Part 1: good, but noisy, hit
+            z = obs_range - map_range;
+            pz += self->z_hit * exp(-(z * z) / (2 * self->sigma_hit * self->sigma_hit));
 
-      // Part 2: short reading from unexpected obstacle (e.g., a person)
-      if(z < 0)
-        pz += self->z_short * self->lambda_short * exp(-self->lambda_short*obs_range);
+            // Part 2: short reading from unexpected obstacle (e.g., a person)
+            if(z < 0)
+                pz += self->z_short * self->lambda_short * exp(-self->lambda_short*obs_range);
 
-      // Part 3: Failure to detect obstacle, reported as max-range
-      if(obs_range == data->range_max)
-        pz += self->z_max * 1.0;
+            // Part 3: Failure to detect obstacle, reported as max-range
+            if(obs_range == data->range_max)
+                pz += self->z_max * 1.0;
 
-      // Part 4: Random measurements
-      if(obs_range < data->range_max)
-        pz += self->z_rand * 1.0/data->range_max;
+            // Part 4: Random measurements
+            if(obs_range < data->range_max)
+                pz += self->z_rand * 1.0/data->range_max;
 
-      // TODO: outlier rejection for short readings
+            // TODO: outlier rejection for short readings
 
-      assert(pz <= 1.0);
-      assert(pz >= 0.0);
-      //      p *= pz;
-      // here we have an ad-hoc weighting scheme for combining beam probs
-      // works well, though...
-      p += pz*pz*pz;
+            assert(pz <= 1.0);
+            assert(pz >= 0.0);
+            //      p *= pz;
+            // here we have an ad-hoc weighting scheme for combining beam probs
+            // works well, though...
+            p += pz*pz*pz;
+        }
+
+        sample->weight *= p;
+        total_weight += sample->weight;
     }
 
-    sample->weight *= p;
-    total_weight += sample->weight;
-  }
-
-  return(total_weight);
+    return(total_weight);
 }
