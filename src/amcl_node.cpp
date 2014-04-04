@@ -249,6 +249,8 @@ private:
 
     int max_beams_, min_particles_, max_particles_;
     int min_nested_particles_, max_nested_particles_;
+    int nesting_lvl_; // indicates how many levels of nesting you want in the filter
+
     double alpha1_, alpha2_, alpha3_, alpha4_, alpha5_;
     double alpha_slow_, alpha_fast_;
     double z_hit_, z_short_, z_max_, z_rand_, sigma_hit_, lambda_short_;
@@ -321,6 +323,7 @@ AmclNode::AmclNode() :
 
     private_nh_.param("min_nested_particles", min_nested_particles_, 1);
     private_nh_.param("max_nested_particles", max_nested_particles_, 1);
+    private_nh_.param("nesting_lvl", nesting_lvl_, 0);
 
     private_nh_.param("kld_err", pf_err_, 0.05);
     private_nh_.param("kld_z", pf_z_, 0.99);
@@ -420,7 +423,7 @@ AmclNode::AmclNode() :
 
     initial_pose_sub_old_ = nh_.subscribe("initialpose", 2, &AmclNode::initialPoseReceivedOld, this);
 
-    color_subscriber = nh_.subscribe("/blobs", 2, &AmclNode::colorReceived, this); //KPM
+    color_subscriber = nh_.subscribe("blobs", 2, &AmclNode::colorReceived, this); //KPM
 
 
     ///
@@ -510,7 +513,7 @@ void AmclNode::reconfigureCB(AMCLConfig &config, uint32_t level)
                    (pf_dual_model_fn_t)AmclNode::dualMCL_PoseGenerator, //Added by KPM
                    (void *)map_,
                    //Added by KPM
-                   1, min_nested_particles_, max_nested_particles_);
+                   nesting_lvl_, min_nested_particles_, max_nested_particles_);
     pf_err_ = config.kld_err;
     pf_z_ = config.kld_z;
     pf_->pop_err = pf_err_;
@@ -633,7 +636,7 @@ AmclNode::handleMapMessage(const nav_msgs::OccupancyGrid& msg)
                    (pf_dual_model_fn_t)AmclNode::dualMCL_PoseGenerator, //Added by KPM
                    (void *)map_,
                    //Added by KPM
-                   1, min_nested_particles_, max_nested_particles_);
+                   nesting_lvl_, min_nested_particles_, max_nested_particles_);
     pf_->pop_err = pf_err_;
     pf_->pop_z = pf_z_;
 
@@ -1207,7 +1210,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
                     ldata.ranges[i][2] = 50;
                     temp_landmark_r += ldata.ranges[i][0];
                     temp_landmark_phi += (angle_min + (i * angle_increment));
-                    //ROS_INFO("temp_landmark_r: %f \t\t temp_landmark_phi: %f",temp_landmark_r,temp_landmark_phi);
+                    ROS_INFO("temp_landmark_r: %f \t\t temp_landmark_phi: %f",temp_landmark_r,temp_landmark_phi);
                     blob_ray_count++;
                 }
                 else{
@@ -1316,11 +1319,11 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
                                              btVector3(nested_particles_set->samples[j].pose.v[0],
                                                        nested_particles_set->samples[j].pose.v[1], 0)),
                                     nested_cloud_msg.poses[total_nested_particle_count++]);
-                    ROS_INFO("upper_lvl_particle: %d | nested_particle: %d ----- nested pose: %0.3f, %0.3f, %0.3f",
-                             i, j,
-                             nested_particles_set->samples[j].pose.v[0],
-                             nested_particles_set->samples[j].pose.v[1],
-                             nested_particles_set->samples[j].pose.v[2]);
+//                    ROS_INFO("upper_lvl_particle: %d | nested_particle: %d ----- nested pose: %0.3f, %0.3f, %0.3f",
+//                             i, j,
+//                             nested_particles_set->samples[j].pose.v[0],
+//                             nested_particles_set->samples[j].pose.v[1],
+//                             nested_particles_set->samples[j].pose.v[2]);
                 }
             }
 

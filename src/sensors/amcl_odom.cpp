@@ -222,15 +222,15 @@ void AMCLOdom::getNestedParticlePose(pf_vector_t *odom_pose, pf_vector_t *delta)
 
   double dice = drand48() * 100;
 
-  double delta_trans = 0.01;
+  double delta_trans = 0.3;
 
-  if(dice < 90){
+  if(dice < 0){
 
       delta->v[0] = cos(odom_pose->v[2]) * delta_trans;
       delta->v[1] = sin(odom_pose->v[2]) * delta_trans;
       delta->v[2] = 0.00;
   }
-  else if(dice < 95){
+  else if(dice < 50){
       delta->v[0] = 0.00;
       delta->v[1] = 0.00;
       delta->v[2] = (M_PI/6);

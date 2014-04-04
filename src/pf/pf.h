@@ -177,9 +177,9 @@ typedef struct _pf_t
 
     void *random_pose_data;
 
+
     // There are two sets of particle filters per set of particles
     // Each set of pfs has one particle filter for every particle in current pf.
-
 
     struct _pf_t *nested_pf_set_0;
     struct _pf_t *nested_pf_set_1;
@@ -263,6 +263,8 @@ void pf_draw_cluster_stats(pf_t *pf, struct _rtk_fig_t *fig);
 
 pf_t* pf_get_this_nested_set(pf_t *pf, int current_set);
 pf_t* pf_get_other_nested_set(pf_t *pf, int current_set);
+
+void pf_set_this_nested_set(pf_t *pf, int current_set, pf_t *allocated_pf);
 
 #ifdef __cplusplus
 }

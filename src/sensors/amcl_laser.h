@@ -94,8 +94,9 @@ class AMCLLaser : public AMCLSensor
 
 
   // Determine the probability of nested particles for the given pose
-  private: static double NestedBeamModel(AMCLLaserData *data,
-                                     pf_sample_set_t* set);
+  private: static double NestedBeamModel(pf_sample_t *upper_sample,
+                                         AMCLLaserData *data,
+                                         pf_sample_set_t* set);
 
   private: laser_model_t model_type;
 
