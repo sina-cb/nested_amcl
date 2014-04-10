@@ -52,6 +52,11 @@ class AMCLLaserData : public AMCLSensorData
   public: double range_max;
   //public: double (*ranges)[2];//@KPM modifying this to include information of whether colors match
   public: double (*ranges)[3];  // ...now it has one more place for colors
+
+    //@KPM: adding these to allow transferring observed location of opponent robot to the weighting function
+    public: double landmark_r;
+    public: double landmark_phi;
+    public: bool isLandmarkObserved;
 };
 
 

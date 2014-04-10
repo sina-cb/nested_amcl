@@ -135,7 +135,7 @@ bool AMCLLaser::UpdateSensor(pf_t *pf, AMCLSensorData *data)
         else
             pf_update_nested_sensor(pf, (pf_sensor_model_fn_t) BeamModel, (pf_nested_sensor_model_fn_t) NestedBeamModel, data);
     }
-/*
+    /*
     if(pf->nesting_lvl > 0){
         for(int i=0; i < pf->sets[pf->current_set].sample_count ; i++){
             pf_t *nested_pf_set, *nested_pf;
@@ -397,7 +397,7 @@ double AMCLLaser::NestedBeamModel(pf_sample_t *upper_sample, AMCLLaserData *data
             x0 = MAP_GXWX(self->map, pose.v[0]);
             y0 = MAP_GYWY(self->map, pose.v[1]);
 
-            if( ( !MAP_VALID(self->map, x0, y0) || (self->map->cells[MAP_INDEX(self->map,x0,y0)].occ_state > -1) )){
+            if( !MAP_VALID(self->map, x0, y0) || (self->map->cells[MAP_INDEX(self->map,x0,y0)].occ_state > -1) ){
                 z = self->map->max_occ_dist;
                 //color_z = self->color_map->max_occ_dist;
             }
@@ -450,12 +450,12 @@ double AMCLLaser::NestedBeamModel(pf_sample_t *upper_sample, AMCLLaserData *data
 
         }
     }
-//    if(pz > 1.0){
-//        pz = 1.0;
-//    }
-//    else if(pz<0.0){
-//        pz = 0.0;
-//    }
+    //    if(pz > 1.0){
+    //        pz = 1.0;
+    //    }
+    //    else if(pz<0.0){
+    //        pz = 0.0;
+    //    }
 
     assert(pz <= 1.0);
     assert(pz >= 0.0);

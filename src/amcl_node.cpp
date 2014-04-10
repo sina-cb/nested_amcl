@@ -1180,6 +1180,10 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
         double temp_landmark_phi = 0;
         double temp_landmark_r = 0;
 
+        ldata.isLandmarkObserved = false;
+        ldata.landmark_r = 0;
+        ldata.landmark_phi = 0;
+
 
         for(int i=0;i<ldata.range_count;i++)
         {
@@ -1217,6 +1221,11 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
                     if(temp_landmark_r >0){
                         landmark_r = temp_landmark_r/blob_ray_count;
                         landmark_phi = temp_landmark_phi/blob_ray_count;
+
+                        ldata.landmark_r = landmark_r;
+                        ldata.landmark_phi = landmark_phi;
+                        ldata.isLandmarkObserved = true;
+
                         //ROS_INFO("final landmark_r: %f \t\t landmark_phi: %f",landmark_r,landmark_phi);
                     }
                     temp_landmark_r = 0;
