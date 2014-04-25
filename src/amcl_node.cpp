@@ -437,6 +437,12 @@ AmclNode::AmclNode() :
     dsrv_ = new dynamic_reconfigure::Server<amcl::AMCLConfig>(ros::NodeHandle("~"));
     dynamic_reconfigure::Server<amcl::AMCLConfig>::CallbackType cb = boost::bind(&AmclNode::reconfigureCB, this, _1, _2);
     dsrv_->setCallback(cb);
+
+    //Initializing bool color_angles[641]
+
+    for(int i=0; i<= 641; i++){
+        color_angles[i] = false;
+    }
 }
 
 void AmclNode::reconfigureCB(AMCLConfig &config, uint32_t level)
@@ -1146,6 +1152,8 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
         double angle_min = tf::getYaw(min_q);
         double angle_increment = tf::getYaw(inc_q) - angle_min;
 
+        // The thing to note here is that both these minimum angles are actually negative,
+        // so we need to take their absolute values
         double difference_in_min_angles = fabs(angle_min) - fabs(color_min_angle);
 
         //ROS_INFO("\n       angle_min: %f", angle_min);
@@ -1208,13 +1216,14 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
 
             color_index_floor = (int) floor( ((i*angle_increment)-difference_in_min_angles)/RADIANS_PER_PIXEL);
 
-            if( (color_index_floor >= 0) && (color_index_floor <= 639) ){
+            if( (color_index_floor >= 0) && (color_index_floor <= 639) ){ //checks to see if colour has been detected at all
+
                 if(AmclNode::color_angles[color_index_floor]
                         || AmclNode::color_angles[color_index_floor+1]){
                     ldata.ranges[i][2] = 50;
                     temp_landmark_r += ldata.ranges[i][0];
                     temp_landmark_phi += (angle_min + (i * angle_increment));
-                    ROS_INFO("temp_landmark_r: %f \t\t temp_landmark_phi: %f",temp_landmark_r,temp_landmark_phi);
+                    ROS_INFO("landmark_r: %f \t landmark_phi: %f \t blob_ray_count: %d", ldata.ranges[i][0], (angle_min + (i * angle_increment)), blob_ray_count + 1 );
                     blob_ray_count++;
                 }
                 else{
@@ -1226,7 +1235,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
                         ldata.landmark_phi = landmark_phi;
                         ldata.isLandmarkObserved = true;
 
-                        //ROS_INFO("final landmark_r: %f \t\t landmark_phi: %f",landmark_r,landmark_phi);
+                        ROS_INFO("final landmark_r: %f \t\t landmark_phi: %f \n",landmark_r,landmark_phi);
                     }
                     temp_landmark_r = 0;
                     temp_landmark_phi = 0;

@@ -240,6 +240,11 @@ void pf_update_nested_sensor(pf_t *pf, pf_sensor_model_fn_t sensor_fn, pf_nested
 // Resample the distribution
 void pf_update_resample(pf_t *pf, double landmark_r, double landmark_phi, double landmark_x, double landmark_y); //KPM adding r and phi of landmark
 
+// Added by KPM to enable resampling specifically from the nested distribution
+// Resample the nested distribution
+void pf_update_nested_resample(pf_t *pf, double landmark_r, double landmark_phi, pf_vector_t upper_particle_pose);
+
+
 // Compute the CEP statistics (mean and variance).
 void pf_get_cep_stats(pf_t *pf, pf_vector_t *mean, double *var);
 
@@ -260,6 +265,8 @@ void pf_draw_cep_stats(pf_t *pf, struct _rtk_fig_t *fig);
 // Draw the cluster statistics
 void pf_draw_cluster_stats(pf_t *pf, struct _rtk_fig_t *fig);
 
+// resampling from the Dual for nested particles
+pf_vector_t nested_dual_fn(void* arg, double landmark_r, double landmark_phi, pf_vector_t upper_particle_pose);
 
 pf_t* pf_get_this_nested_set(pf_t *pf, int current_set);
 pf_t* pf_get_other_nested_set(pf_t *pf, int current_set);
