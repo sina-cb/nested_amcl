@@ -354,13 +354,13 @@ double AMCLLaser::NestedBeamModel(pf_sample_t *upper_sample, AMCLLaserData *data
     double z, pz, pz_color;
     double p;
     //    double map_range;
-    double obs_range, obs_bearing, obs_color;
+    double obs_range, obs_bearing, sample_abs_angle, sample_bearing;
     double total_weight;
     pf_sample_t *sample;
     pf_vector_t pose, upper_pose;
     pf_vector_t hit;
 
-    bool isColorSeen = false;
+
 
 
     self = (AMCLLaser*) data->sensor;
@@ -429,45 +429,104 @@ double AMCLLaser::NestedBeamModel(pf_sample_t *upper_sample, AMCLLaserData *data
 
             else{ // When we don't have a sighting of the other robot
 
+                sample_abs_angle = atan2((pose.v[1] - upper_pose.v[1]), (pose.v[0] - upper_pose.v[0]));
+                sample_bearing = sample_abs_angle - upper_pose.v[2];
+
+
+                if(fabs(sample_bearing) > (28.5 * M_PI/180) ){ // Definitely outside the visible sector
+                    //z = self->map->max_occ_dist/2;
+                    z = 0.0001;
+                }
+
+
+                else{ // Negative Weighting: Is in visible sector...so could be possibly visible (but is not, so should get very low weight)
+
+                    double sample_range = 0;
+
+                    sample_range = sqrt( (pose.v[1]-upper_pose.v[1])*(pose.v[1]-upper_pose.v[1])
+                                         + (pose.v[0]-upper_pose.v[0])*(pose.v[0]-upper_pose.v[0]) );
+
+
+                    step = (data->range_count - 1) / (self->max_beams - 1);
+
+                    for (i = 0; i < data->range_count; i += step)
+                    {
+                        // obs_range = data->ranges[i][0];
+                        obs_bearing = data->ranges[i][1];
+                        // obs_color = data->ranges[i][2];
+
+                        // break when the bearing exceeds the bearing of sample, so we have
+                        // the "i" corresponding to laser beam immediately after sample_bearing
+                        if(obs_bearing > sample_bearing){
+                            break;
+                        }
+                    }
+
+                    if(i == 0){
+                        if(data->ranges[i][0] < sample_range)
+                            z = 0.0001;
+                    }
+                    else{
+                        if( (data->ranges[i][0] < sample_range) || (data->ranges[i-1][0] < sample_range) ){
+                            z = 0.0001;
+                        }
+                        else{
+                            z = -1; //self->map->max_occ_dist;
+                        }
+                    }
+
+
+                }
+
+
+
+                /*
                 step = (data->range_count - 1) / (self->max_beams - 1);
 
                 z = self->map->max_occ_dist - 0.1 ;
+                */
 
                 // Gaussian model
                 // NOTE: this should have a normalization of 1/(sqrt(2pi)*sigma)
-                pz = pz + (self->z_hit * exp(-(z * z) / z_hit_denom));
+
+                if(z >=0 ){
+                    pz = pz + (self->z_hit * exp(-(z * z) / z_hit_denom));
+                }
+                else{
+                    pz = 0.0;
+                }
 
                 // Part 2: random measurements
                 // pz = pz + (self->z_rand * z_rand_mult) *(self->z_rand * z_rand_mult);
+
 
             } // end else (when there's no sighting of the other robot)
 
         } // end if (invalid MAP locations)
 
+
+        //    if(pz > 1.0){
+        //        pz = 1.0;
+        //    }
+        //    else if(pz<0.0){
+        //        pz = 0.0;
+        //    }
+
+        assert(pz <= 1.0);
+        assert(pz >= 0.0);
+
+        assert(pz_color <= 1.0);
+        assert(pz_color >= 0.0);
+
+        //      p *= pz;
+        // here we have an ad-hoc weighting scheme for combining beam probs
+        // works well, though...
+        p += pz*pz*pz;
+
+        sample->weight *= p;
+        total_weight += sample->weight;
+
     } // end looping through all samples
-
-
-    //    if(pz > 1.0){
-    //        pz = 1.0;
-    //    }
-    //    else if(pz<0.0){
-    //        pz = 0.0;
-    //    }
-
-    assert(pz <= 1.0);
-    assert(pz >= 0.0);
-
-    assert(pz_color <= 1.0);
-    assert(pz_color >= 0.0);
-
-    //      p *= pz;
-    // here we have an ad-hoc weighting scheme for combining beam probs
-    // works well, though...
-    p += pz*pz*pz;
-
-    sample->weight *= p;
-    total_weight += sample->weight;
-
 
     return(total_weight);
 }

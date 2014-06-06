@@ -114,6 +114,12 @@ angle_diff(double a, double b)
         return(d2);
 }
 
+// Function for comparing int numbers. This is needed for passing to the qsort function
+int compare_int(const void * a, const void * b){
+    return ( *(int*)a - *(int*)b );
+}
+
+
 class AmclNode
 {
 public:
@@ -168,6 +174,9 @@ private:
     void applyInitialPose();
 
     double getYaw(tf::Pose& t);
+
+
+
 
     //parameter for what odom to use
     std::string odom_frame_id_;
@@ -540,7 +549,11 @@ void AmclNode::reconfigureCB(AMCLConfig &config, uint32_t level)
     // Instantiate the sensor objects
     // Odometry
     delete odom_;
-    odom_ = new AMCLOdom();
+
+    // KPM: Replacing the original constructor with one that initializes the map
+    //odom_ = new AMCLOdom();
+    odom_ = new AMCLOdom(map_);
+
     ROS_ASSERT(odom_);
     if(odom_model_type_ == ODOM_MODEL_OMNI)
         odom_->SetModelOmni(alpha1_, alpha2_, alpha3_, alpha4_, alpha5_);
@@ -661,7 +674,10 @@ AmclNode::handleMapMessage(const nav_msgs::OccupancyGrid& msg)
     // Instantiate the sensor objects
     // Odometry
     delete odom_;
-    odom_ = new AMCLOdom();
+
+    // KPM: Replacing the original constructor with one that initializes the map
+    //odom_ = new AMCLOdom();
+    odom_ = new AMCLOdom(map_);
     ROS_ASSERT(odom_);
     if(odom_model_type_ == ODOM_MODEL_OMNI)
         odom_->SetModelOmni(alpha1_, alpha2_, alpha3_, alpha4_, alpha5_);
@@ -1187,6 +1203,8 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
         //KPM: initializing landmark readings
         double temp_landmark_phi = 0;
         double temp_landmark_r = 0;
+        double landmark_r_distances[max_beams_];
+        bool isMaxRangeIncluded = false;
 
         ldata.isLandmarkObserved = false;
         ldata.landmark_r = 0;
@@ -1221,21 +1239,43 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
                 if(AmclNode::color_angles[color_index_floor]
                         || AmclNode::color_angles[color_index_floor+1]){
                     ldata.ranges[i][2] = 50;
-                    temp_landmark_r += ldata.ranges[i][0];
+
+                    // Only include one max ranged sensory input
+                    // ...reject all other max range readings
+                    if(ldata.ranges[i][0] == ldata.range_max){
+                        if(isMaxRangeIncluded == false){
+                            temp_landmark_r += ldata.ranges[i][0];
+                            landmark_r_distances[blob_ray_count] = ldata.ranges[i][0];
+                            blob_ray_count++;
+
+                            isMaxRangeIncluded = true;
+                        }
+                    }
+                    else{
+                        temp_landmark_r += ldata.ranges[i][0];
+                        landmark_r_distances[blob_ray_count] = ldata.ranges[i][0];
+                        blob_ray_count++;
+                    }
+
+
                     temp_landmark_phi += (angle_min + (i * angle_increment));
-                    ROS_INFO("landmark_r: %f \t landmark_phi: %f \t blob_ray_count: %d", ldata.ranges[i][0], (angle_min + (i * angle_increment)), blob_ray_count + 1 );
-                    blob_ray_count++;
+                    ROS_DEBUG("landmark_r: %f \t landmark_phi: %f \t blob_ray_count: %d", ldata.ranges[i][0], (angle_min + (i * angle_increment)), blob_ray_count + 1 );
+
                 }
                 else{
                     if(temp_landmark_r >0){
-                        landmark_r = temp_landmark_r/blob_ray_count;
+                        //landmark_r = temp_landmark_r/blob_ray_count;
                         landmark_phi = temp_landmark_phi/blob_ray_count;
+
+                        qsort(landmark_r_distances, blob_ray_count, sizeof(int) ,compare_int);
+
+                        landmark_r = landmark_r_distances[blob_ray_count/2];
 
                         ldata.landmark_r = landmark_r;
                         ldata.landmark_phi = landmark_phi;
                         ldata.isLandmarkObserved = true;
 
-                        ROS_INFO("final landmark_r: %f \t\t landmark_phi: %f \n",landmark_r,landmark_phi);
+                        ROS_DEBUG("final landmark_r: %f \t\t landmark_phi: %f \n",landmark_r,landmark_phi);
                     }
                     temp_landmark_r = 0;
                     temp_landmark_phi = 0;
@@ -1278,7 +1318,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
         }
 
         pf_sample_set_t* set = pf_->sets + pf_->current_set;
-        ROS_DEBUG("Num samples: %d\n", set->sample_count);
+        ROS_INFO("Num samples: %d\n", set->sample_count);
 
         // Publish the resulting cloud
         // TODO: set maximum rate for publishing
@@ -1523,6 +1563,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
     }
 
 }
+
 
 double
 AmclNode::getYaw(tf::Pose& t)

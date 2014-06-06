@@ -36,6 +36,9 @@
 
 using namespace amcl;
 
+// Added by KPM for nested particle motion
+static double last_delta_trans = 0.0;
+
 static double
 normalize(double z)
 {
@@ -62,6 +65,13 @@ angle_diff(double a, double b)
 AMCLOdom::AMCLOdom() : AMCLSensor()
 {
   this->time = 0.0;
+}
+
+// Constructor with map parameter (Created by KPM for NPF)
+AMCLOdom::AMCLOdom(map_t *map) : AMCLSensor()
+{
+  this->time = 0.0;
+  this->map = map;
 }
 
 void
@@ -106,9 +116,11 @@ bool AMCLOdom::UpdateAction(pf_t *pf, AMCLSensorData *data)
   set = pf->sets + pf->current_set;
   pf_vector_t old_pose = pf_vector_sub(ndata->pose, ndata->delta);
 
+  double delta_trans = 0.0;
+
   if(this->model_type == ODOM_MODEL_OMNI)
   {
-    double delta_trans, delta_rot, delta_bearing;
+    double delta_rot, delta_bearing;
     double delta_trans_hat, delta_rot_hat, delta_strafe_hat;
 
     delta_trans = sqrt(ndata->delta.v[0]*ndata->delta.v[0] +
@@ -148,7 +160,7 @@ bool AMCLOdom::UpdateAction(pf_t *pf, AMCLSensorData *data)
   else //(this->model_type == ODOM_MODEL_DIFF)
   {
     // Implement sample_motion_odometry (Prob Rob p 136)
-    double delta_rot1, delta_trans, delta_rot2;
+    double delta_rot1, delta_rot2;
     double delta_rot1_hat, delta_trans_hat, delta_rot2_hat;
     double delta_rot1_noise, delta_rot2_noise;
 
@@ -199,47 +211,213 @@ bool AMCLOdom::UpdateAction(pf_t *pf, AMCLSensorData *data)
   }
 
   if(pf->nesting_lvl > 0){
-      AMCLOdomData *nested_odomData;
+      //AMCLOdomData *nested_odomData;
       pf_t *nested_pf_set, *nested_pf_sample;
 
       nested_pf_set = pf_get_this_nested_set(pf, pf->current_set);
 
-      nested_odomData->pose = pf->fake_nested_odomPose;
-      nested_odomData->delta = pf->fake_nested_odomDelta;
+      //nested_odomData->pose = pf->fake_nested_odomPose;
+      //nested_odomData->delta = pf->fake_nested_odomDelta;
 
-      getNestedParticlePose(&nested_odomData->pose, &nested_odomData->delta);
+      //getNestedParticlePose(&nested_odomData->pose, &nested_odomData->delta);
 
       for(int i=0; i< set->sample_count; i++){
           nested_pf_sample = nested_pf_set + i;
-          this->UpdateAction(nested_pf_sample, (AMCLSensorData*)nested_odomData);
+          this->UpdateNestedAction(nested_pf_sample, delta_trans); //, (AMCLSensorData*)nested_odomData);
       }
   }
   return true;
 }
 
 
-void AMCLOdom::getNestedParticlePose(pf_vector_t *odom_pose, pf_vector_t *delta){
+bool AMCLOdom::UpdateNestedAction(pf_t *pf, double upper_delta_trans){ //, AMCLSensorData *nested_odomData){
+
+    // AMCLOdomData *ndata =
+    //ndata = (AMCLOdomData*) data;
+
+    pf_vector_t delta = pf_vector_zero();
+
+    // Compute the new sample poses
+    pf_sample_set_t *set;
+
+    set = pf->sets + pf->current_set;
+    // pf_vector_t old_pose = pf_vector_sub(ndata->pose, ndata->delta);
+
+    double delta_trans = 0.0;
+
+    for (int i = 0; i < set->sample_count; i++)
+    {
+        pf_sample_t* sample = set->samples + i;
+        pf_vector_t old_pose = sample->pose;
+
+        // get the new pose and delta in these passed arguments
+        getNestedParticlePose(&sample->pose, &delta, upper_delta_trans);
+
+        pf->fake_nested_odomPose = sample->pose;
+        pf->fake_nested_odomDelta = delta;
+
+        if(this->model_type == ODOM_MODEL_OMNI)
+        {
+            double delta_rot, delta_bearing;
+            double delta_trans_hat, delta_rot_hat, delta_strafe_hat;
+
+            delta_trans = sqrt(delta.v[0]*delta.v[0] +
+                               delta.v[1]*delta.v[1]);
+            delta_rot = delta.v[2];
+
+            // Precompute a couple of things
+            double trans_hat_stddev = (alpha3 * (delta_trans*delta_trans) +
+                                       alpha1 * (delta_rot*delta_rot));
+            double rot_hat_stddev = (alpha4 * (delta_rot*delta_rot) +
+                                     alpha2 * (delta_trans*delta_trans));
+            double strafe_hat_stddev = (alpha1 * (delta_rot*delta_rot) +
+                                        alpha5 * (delta_trans*delta_trans));
+
+            { // calculations specific to the OMNI model
+
+                delta_bearing = angle_diff(atan2(delta.v[1], delta.v[0]),
+                                           old_pose.v[2]) + sample->pose.v[2];
+                double cs_bearing = cos(delta_bearing);
+                double sn_bearing = sin(delta_bearing);
+
+                // Sample pose differences
+                delta_trans_hat = delta_trans + pf_ran_gaussian(trans_hat_stddev);
+                delta_rot_hat = delta_rot + pf_ran_gaussian(rot_hat_stddev);
+                delta_strafe_hat = 0 + pf_ran_gaussian(strafe_hat_stddev);
+                // Apply sampled update to particle pose
+                sample->pose.v[0] += (delta_trans_hat * cs_bearing +
+                                      delta_strafe_hat * sn_bearing);
+                sample->pose.v[1] += (delta_trans_hat * sn_bearing -
+                                      delta_strafe_hat * cs_bearing);
+                sample->pose.v[2] += delta_rot_hat ;
+                sample->weight = 1.0 / set->sample_count;
+            }
+        }
+        else //(this->model_type == ODOM_MODEL_DIFF)
+        {
+            // Implement sample_motion_odometry (Prob Rob p 136)
+            double delta_rot1, delta_rot2;
+            double delta_rot1_hat, delta_trans_hat, delta_rot2_hat;
+            double delta_rot1_noise, delta_rot2_noise;
+
+            // Avoid computing a bearing from two poses that are extremely near each
+            // other (happens on in-place rotation).
+            if(sqrt(delta.v[1]*delta.v[1] +
+                    delta.v[0]*delta.v[0]) < 0.01)
+                delta_rot1 = 0.0;
+            else
+                delta_rot1 = angle_diff(atan2(delta.v[1], delta.v[0]),
+                                        old_pose.v[2]);
+            delta_trans = sqrt(delta.v[0]*delta.v[0] +
+                               delta.v[1]*delta.v[1]);
+            delta_rot2 = angle_diff(delta.v[2], delta_rot1);
+
+            // We want to treat backward and forward motion symmetrically for the
+            // noise model to be applied below.  The standard model seems to assume
+            // forward motion.
+            delta_rot1_noise = std::min(fabs(angle_diff(delta_rot1,0.0)),
+                                        fabs(angle_diff(delta_rot1,M_PI)));
+            delta_rot2_noise = std::min(fabs(angle_diff(delta_rot2,0.0)),
+                                        fabs(angle_diff(delta_rot2,M_PI)));
+
+            { // calculations specific to the DIFF model
+
+                // Sample pose differences
+                delta_rot1_hat = angle_diff(delta_rot1,
+                                            pf_ran_gaussian(this->alpha1*delta_rot1_noise*delta_rot1_noise +
+                                                            this->alpha2*delta_trans*delta_trans));
+                delta_trans_hat = delta_trans -
+                        pf_ran_gaussian(this->alpha3*delta_trans*delta_trans +
+                                        this->alpha4*delta_rot1_noise*delta_rot1_noise +
+                                        this->alpha4*delta_rot2_noise*delta_rot2_noise);
+                delta_rot2_hat = angle_diff(delta_rot2,
+                                            pf_ran_gaussian(this->alpha1*delta_rot2_noise*delta_rot2_noise +
+                                                            this->alpha2*delta_trans*delta_trans));
+
+                // Apply sampled update to particle pose
+                sample->pose.v[0] += delta_trans_hat *
+                        cos(sample->pose.v[2] + delta_rot1_hat);
+                sample->pose.v[1] += delta_trans_hat *
+                        sin(sample->pose.v[2] + delta_rot1_hat);
+                sample->pose.v[2] += delta_rot1_hat + delta_rot2_hat;
+                sample->weight = 1.0 / set->sample_count;
+            }
+        }
+    } // end for
+
+    if(pf->nesting_lvl > 0){
+        //AMCLOdomData *nested_odomData;
+        pf_t *nested_pf_set, *nested_pf_sample;
+
+        nested_pf_set = pf_get_this_nested_set(pf, pf->current_set);
+
+        //nested_odomData->pose = pf->fake_nested_odomPose;
+        //nested_odomData->delta = pf->fake_nested_odomDelta;
+
+        //getNestedParticlePose(&nested_odomData->pose, &nested_odomData->delta);
+
+        for(int i=0; i< set->sample_count; i++){
+            nested_pf_sample = nested_pf_set + i;
+            this->UpdateNestedAction(nested_pf_sample, delta_trans); //, (AMCLSensorData*)nested_odomData);
+        }
+    }
+    return true;
+}
+
+
+
+void AMCLOdom::getNestedParticlePose(pf_vector_t *odom_pose, pf_vector_t *delta, double upper_delta_trans){
 
   double dice = drand48() * 100;
+  double nested_delta_trans = 0.0;
+  double fixed_trans = 0.35;
 
-  double delta_trans = 0.3;
-
-  if(dice < 0){
-
-      delta->v[0] = cos(odom_pose->v[2]) * delta_trans;
-      delta->v[1] = sin(odom_pose->v[2]) * delta_trans;
-      delta->v[2] = 0.00;
+  if(upper_delta_trans > 0.1){
+      last_delta_trans = upper_delta_trans;
+      nested_delta_trans = upper_delta_trans;
   }
-  else if(dice < 50){
-      delta->v[0] = 0.00;
-      delta->v[1] = 0.00;
-      delta->v[2] = (M_PI/6);
-  }
-
   else{
-      delta->v[0] = 0.00;
-      delta->v[1] = 0.00;
-      delta->v[2] = -(M_PI/6);
+      if(last_delta_trans == 0.0){
+          nested_delta_trans = fixed_trans;
+      }
+      else{
+          nested_delta_trans = last_delta_trans;
+      }
+  }
+
+  double map_range = map_calc_range(this->map, odom_pose->v[0], odom_pose->v[1], odom_pose->v[2], 10);
+
+  if(map_range < 1){
+      if(dice <= 50){
+            delta->v[0] = 0.00;
+            delta->v[1] = 0.00;
+            delta->v[2] = (M_PI/6);
+        }
+
+        else{
+            delta->v[0] = 0.00;
+            delta->v[1] = 0.00;
+            delta->v[2] = -(M_PI/6);
+        }
+  }
+  else{
+      if(dice <= 90){
+
+          delta->v[0] = cos(odom_pose->v[2]) * nested_delta_trans;
+          delta->v[1] = sin(odom_pose->v[2]) * nested_delta_trans;
+          delta->v[2] = 0.00;
+      }
+      else if(dice <= 95){
+          delta->v[0] = 0.00;
+          delta->v[1] = 0.00;
+          delta->v[2] = (M_PI/6);
+      }
+
+      else{
+          delta->v[0] = 0.00;
+          delta->v[1] = 0.00;
+          delta->v[2] = -(M_PI/6);
+      }
   }
 
   *odom_pose = pf_vector_add(*odom_pose, *delta);

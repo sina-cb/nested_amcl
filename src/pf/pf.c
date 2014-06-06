@@ -699,7 +699,7 @@ void pf_update_resample(pf_t *pf, double landmark_r, double landmark_phi, double
 
         //    if(drand48() < w_diff){
 
-        if( (pf->isNested != 0) && drand48() < 0.05 ){
+        if( (pf->isNested > 0) && drand48() < 0.05 ){
             if( (DUAL_MCL == 1)  && (landmark_r > 0) ){
                 //KPM..this is the original random sampling function
                 //sample_b->pose = (pf->random_pose_fn)(pf->random_pose_data);
@@ -896,18 +896,20 @@ void pf_update_nested_resample(pf_t *pf, double landmark_r, double landmark_phi,
 
         //    if(drand48() < w_diff){
 
-        if( (pf->isNested != 0) && drand48() < 0.05 ){
-            if( (DUAL_MCL == 1)  && (landmark_r > 0) ){
+        if( (pf->isNested != 0) && drand48() < 0.05 && (landmark_r > 0)){
+            //if( (DUAL_MCL == 1) ){
                 //KPM..this is the original random sampling function
                 //sample_b->pose = (pf->random_pose_fn)(pf->random_pose_data);
 
                 //KPM ...trying dual sampling instead of random sampling
                 sample_b->pose = nested_dual_fn(pf->random_pose_data, landmark_r, landmark_phi, upper_particle_pose);
 
-            }
+            //}
+            /*
             else{
                 sample_b->pose = (pf->random_pose_fn)(pf->random_pose_data);
             }
+            */
         }
 
 
