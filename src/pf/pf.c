@@ -133,10 +133,6 @@ pf_t *pf_alloc(int min_samples, int max_samples,
             if(nesting_level > 0){
 
                 nested_pf = nested_pf_set + i;
-                //                pf->nested_pf_sets[i][j] =
-                //                nested_pf = nested_pf_set[i];
-                //                nested_pf = calloc(1, sizeof(pf_t));
-                //                nested_pf = pf->nested_pf_sets[j][i];
                 pf_nested_alloc(nested_pf, min_nested_samples, max_nested_samples,
                                 alpha_slow, alpha_fast,
                                 random_pose_fn,
@@ -454,7 +450,6 @@ void pf_update_action(pf_t *pf, pf_action_model_fn_t action_fn, void *action_dat
 // Update the filter with some new sensor observation
 void pf_update_sensor(pf_t *pf, pf_sensor_model_fn_t sensor_fn, void *sensor_data)
 {
-    //int i;
     pf_sample_set_t *set;
     //pf_sample_t *sample;
     double total;
@@ -465,44 +460,6 @@ void pf_update_sensor(pf_t *pf, pf_sensor_model_fn_t sensor_fn, void *sensor_dat
     total = (*sensor_fn) (sensor_data, set);
 
     normalize_weights(total, pf);
-    /*
-
-    if (total > 0.0)
-    {
-        // Normalize weights
-        double w_avg=0.0;
-        for (i = 0; i < set->sample_count; i++)
-        {
-            sample = set->samples + i;
-            w_avg += sample->weight;
-            sample->weight /= total;
-        }
-        // Update running averages of likelihood of samples (Prob Rob p258)
-        w_avg /= set->sample_count;
-        if(pf->w_slow == 0.0)
-            pf->w_slow = w_avg;
-        else
-            pf->w_slow += pf->alpha_slow * (w_avg - pf->w_slow);
-        if(pf->w_fast == 0.0)
-            pf->w_fast = w_avg;
-        else
-            pf->w_fast += pf->alpha_fast * (w_avg - pf->w_fast);
-        //printf("w_avg: %e slow: %e fast: %e\n",
-        //w_avg, pf->w_slow, pf->w_fast);
-    }
-    else
-    {
-        //PLAYER_WARN("pdf has zero probability");
-
-        // Handle zero total
-        for (i = 0; i < set->sample_count; i++)
-        {
-            sample = set->samples + i;
-            sample->weight = 1.0 / set->sample_count;
-        }
-    }
-
-    */
 
     return;
 }
@@ -514,7 +471,6 @@ void pf_update_nested_sensor(pf_t *pf,
                              pf_nested_sensor_model_fn_t nested_sensor_fn,
                              void *sensor_data)
 {
-    //int i;
     pf_sample_set_t *set;
     pf_sample_t *sample;
     double total;
@@ -525,54 +481,6 @@ void pf_update_nested_sensor(pf_t *pf,
     total = (*sensor_fn) (sensor_data, set);
 
     normalize_weights(total, pf);
-
-    /*
-    if (total > 0.0)
-    {
-        // Normalize weights
-        double w_avg=0.0;
-        for (i = 0; i < set->sample_count; i++)
-        {
-            sample = set->samples + i;
-            w_avg += sample->weight;
-            sample->weight /= total;
-        }
-        // Update running averages of likelihood of samples (Prob Rob p258)
-        w_avg /= set->sample_count;
-        if(pf->w_slow == 0.0)
-            pf->w_slow = w_avg;
-        else
-            pf->w_slow += pf->alpha_slow * (w_avg - pf->w_slow);
-        if(pf->w_fast == 0.0)
-            pf->w_fast = w_avg;
-        else
-            pf->w_fast += pf->alpha_fast * (w_avg - pf->w_fast);
-        //printf("w_avg: %e slow: %e fast: %e\n",
-        //w_avg, pf->w_slow, pf->w_fast);
-    }
-    else
-    {
-        //PLAYER_WARN("pdf has zero probability");
-
-        // Handle zero total
-        for (i = 0; i < set->sample_count; i++)
-        {
-            sample = set->samples + i;
-            sample->weight = 1.0 / set->sample_count;
-        }
-    }
-
-    */
-    /*
-    if(pf->nesting_lvl > 0){
-        for(int i=0; i < pf->sets[pf->current_set].sample_count ; i++){
-            pf_t *nested_pf_set, *nested_pf;
-            nested_pf_set = pf_get_this_nested_set(pf, pf->current_set);
-            nested_pf = nested_pf_set + i;
-            pf_update_sensor(nested_pf, (pf_sensor_model_fn_t) NestedBeamModel, data);
-        }
-    }
-*/
 
     if(pf->nesting_lvl > 0){
         int i = 0;
@@ -585,9 +493,12 @@ void pf_update_nested_sensor(pf_t *pf,
         for(i=0; i<set->sample_count; i++){
             sample = set->samples + i;
             nested_pf = nested_pf_set + i;
-            nested_set = nested_pf->sets[nested_pf_set->current_set];
-            nested_total = (*nested_sensor_fn) (sample, sensor_data, &nested_set);
-            normalize_weights(nested_total, nested_pf_set);
+
+            if(nested_pf->max_samples > 0){
+                nested_set = nested_pf->sets[nested_pf_set->current_set];
+                nested_total = (*nested_sensor_fn) (sample, sensor_data, &nested_set);
+                normalize_weights(nested_total, nested_pf_set);
+            }
         }
     }
 
@@ -768,23 +679,8 @@ void pf_update_resample(pf_t *pf, double landmark_r, double landmark_phi, double
                 // Add sample to list
                 sample_b->pose = sample_a->pose;
                 if(pf->nesting_lvl > 0){
-                    /*
-                    pf_nested_alloc(pf_sample_b,
-                                    pf_sample_a->min_samples,
-                                    pf_sample_a->max_samples,
-                                    pf_sample_a->alpha_slow,
-                                    pf_sample_a->alpha_fast,
-                                    pf_sample_a->random_pose_fn,
-                                    pf_sample_a->dual_pose_fn,
-                                    pf_sample_a->random_pose_data,
-                                    pf_sample_a->nesting_lvl,
-                                    pf_sample_a->min_nested_samples,
-                                    pf_sample_a->max_nested_samples
-                                    );
-                                    */
                     pf_copy(pf_sample_a, pf_sample_b);
-
-                    pf_update_nested_resample(pf_sample_b, landmark_r, landmark_phi, sample_b->pose);
+                    //pf_update_nested_resample(pf_sample_b, landmark_r, landmark_phi, sample_b->pose);
                 }
 
             }
@@ -797,8 +693,22 @@ void pf_update_resample(pf_t *pf, double landmark_r, double landmark_phi, double
         // Add sample to histogram
         pf_kdtree_insert(set_b->kdtree, sample_b->pose, sample_b->weight);
 
-    }
+    } // End looping through for resampling
 
+    //Resample all nested particles
+    if(pf->nesting_lvl>0){
+        int sample_counter = 0;
+        while(sample_counter < set_b->sample_count){
+
+            sample_b = set_b->samples + sample_counter;
+            pf_sample_b = pf_nested_set_b + sample_counter;
+
+            //pf_copy(pf_sample_a, pf_sample_b);
+            pf_update_nested_resample(pf_sample_b, landmark_r, landmark_phi, sample_b->pose);
+
+            sample_counter++;
+        }
+    }
 
     //Free all memory related to pf_nested_set_a
     if(pf->nesting_lvl>0){
@@ -968,20 +878,7 @@ void pf_update_nested_resample(pf_t *pf, double landmark_r, double landmark_phi,
                 // Add sample to list
                 sample_b->pose = sample_a->pose;
                 if(pf->nesting_lvl > 0){
-                    /*
-                    pf_nested_alloc(pf_sample_b,
-                                    pf_sample_a->min_samples,
-                                    pf_sample_a->max_samples,
-                                    pf_sample_a->alpha_slow,
-                                    pf_sample_a->alpha_fast,
-                                    pf_sample_a->random_pose_fn,
-                                    pf_sample_a->dual_pose_fn,
-                                    pf_sample_a->random_pose_data,
-                                    pf_sample_a->nesting_lvl,
-                                    pf_sample_a->min_nested_samples,
-                                    pf_sample_a->max_nested_samples
-                                    );
-                                    */
+
                     pf_copy(pf_sample_a, pf_sample_b);
 
                     pf_update_nested_resample(pf_sample_b, landmark_r, landmark_phi, sample_b->pose);

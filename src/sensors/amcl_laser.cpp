@@ -135,16 +135,7 @@ bool AMCLLaser::UpdateSensor(pf_t *pf, AMCLSensorData *data)
         else
             pf_update_nested_sensor(pf, (pf_sensor_model_fn_t) BeamModel, (pf_nested_sensor_model_fn_t) NestedBeamModel, data);
     }
-    /*
-    if(pf->nesting_lvl > 0){
-        for(int i=0; i < pf->sets[pf->current_set].sample_count ; i++){
-            pf_t *nested_pf_set, *nested_pf;
-            nested_pf_set = pf_get_this_nested_set(pf, pf->current_set);
-            nested_pf = nested_pf_set + i;
-            pf_update_sensor(nested_pf, (pf_sensor_model_fn_t) NestedBeamModel, data);
-        }
-    }
-*/
+
     return true;
 }
 
