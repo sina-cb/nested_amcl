@@ -457,28 +457,24 @@ double AMCLLaser::NestedBeamModel(pf_sample_t *upper_sample, AMCLLaserData *data
 
                         // break when the bearing exceeds the bearing of sample, so we have
                         // the "i" corresponding to laser beam immediately after sample_bearing
-                        if(obs_bearing > sample_bearing){
+                        if(obs_bearing >= sample_bearing){
                             break;
                         }
                     }
 
-                    if(i == 0){
-                        if(data->ranges[i][0] < sample_range)
+                    if(i > 0 && i<data->range_count ){
+                        double range1 = data->ranges[i][0];
+                        double range2 = data->ranges[i-step][0];
+
+                        if( (range1 < sample_range) || (range2 < sample_range))
                             z = 0.0001;
+                        else
+                            z = -1; //self->map->max_occ_dist;
                     }
                     else{
-                        if( (data->ranges[i][0] < sample_range) || (data->ranges[i-1][0] < sample_range) ){
-                            z = 0.0001;
-                        }
-                        else{
-                            z = -1; //self->map->max_occ_dist;
-                        }
+                        z = 0.0001;
                     }
-
-
                 }
-
-
 
                 /*
                 step = (data->range_count - 1) / (self->max_beams - 1);
