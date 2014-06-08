@@ -34,7 +34,7 @@
 #include "pf_pdf.h"
 #include "pf_kdtree.h"
 
-//#include "ros/console.h"
+//#include "ros/ros.h"
 
 #define DUAL_MCL 1
 
@@ -361,9 +361,13 @@ void pf_init(pf_t *pf, pf_vector_t mean, pf_matrix_t cov, map_t* map)
 
     set = pf->sets + pf->current_set;
 
+    /*
+    Removing initialization of Nested PFs to allow implementation of Adaptive NPF
+
     if(pf->nesting_lvl > 0){
         nested_pf_set = pf_get_this_nested_set(pf,pf->current_set);
     }
+    */
 
     // Create the kd tree for adaptive sampling
     pf_kdtree_clear(set->kdtree);
@@ -731,67 +735,93 @@ void pf_update_resample(pf_t *pf, double landmark_r, double landmark_phi, double
 
     //Resample all nested particles (if particles exist)
 
-    if(pf->nesting_lvl>0 && pf->max_nested_samples>0){
+    if(pf->nesting_lvl>0){
 
-        int sample_counter = 0;
+        if(pf->max_nested_samples>0){
 
-        while(sample_counter < set_b->sample_count){
+            int sample_counter = 0;
 
-            sample_b = set_b->samples + sample_counter;
-            pf_sample_b = pf_nested_set_b + sample_counter;
+            while(sample_counter < set_b->sample_count){
 
-            //pf_sample_b->max_samples = pf->max_nested_samples;
+                sample_b = set_b->samples + sample_counter;
+                pf_sample_b = pf_nested_set_b + sample_counter;
+
+                pf_sample_b->max_samples = pf->max_nested_samples;
 
 
-            // allocate and initiate from scratch if no nested particles before this
-            if(old_max_nested_samples <= 0 ){
-                pf_nested_alloc(pf_sample_b,
-                                0,
-                                pf->max_nested_samples,
-                                pf->alpha_slow,
-                                pf->alpha_fast,
-                                pf->random_pose_fn,
-                                pf->dual_pose_fn,
-                                pf->random_pose_data,
-                                pf->nesting_lvl-1,
-                                0,0);
 
-                pf_init(pf_sample_b,
-                        pf_vector_zero(),
-                        pf_matrix_zero(),
-                        pf->random_pose_data
-                        );
-            }
+                // allocate and initiate from scratch if no nested particles before this
+                if(old_max_nested_samples <= 0 ){
+                    pf_nested_alloc(pf_sample_b,
+                                    0,
+                                    pf->max_nested_samples,
+                                    pf->alpha_slow,
+                                    pf->alpha_fast,
+                                    pf->random_pose_fn,
+                                    pf->dual_pose_fn,
+                                    pf->random_pose_data,
+                                    pf->nesting_lvl-1,
+                                    0,0);
 
-            else{ // When Nested particles exist before this
-
-                if(old_max_nested_samples == pf->max_nested_samples){
-                    //pf_copy(pf_sample_a, pf_sample_b);
-                    pf_update_nested_resample(pf_sample_b, landmark_r, landmark_phi, sample_b->pose);
+                    pf_init(pf_sample_b,
+                            pf_vector_zero(),
+                            pf_matrix_zero(),
+                            pf->random_pose_data
+                            );
                 }
-                else{
-                    pf_update_nested_adaptive_resample(pf_sample_b, landmark_r, landmark_phi, sample_b->pose);
+
+                else{ // When Nested particles exist before this
+
+                    if(old_max_nested_samples == pf->max_nested_samples){
+                        //pf_copy(pf_sample_a, pf_sample_b);
+                        pf_update_nested_adaptive_resample(pf_sample_b, landmark_r, landmark_phi, sample_b->pose);
+                    }
+                    else{
+                        pf_update_nested_adaptive_resample(pf_sample_b, landmark_r, landmark_phi, sample_b->pose);
+                    }
                 }
+
+
+                sample_counter++;
             }
-
-
-            sample_counter++;
         }
+
+        else{ // when current max_nested_particles is 0 or less than 0
+
+
+        }
+
     }// End Resampling of Nested Particles
 
     //Free all memory related to pf_nested_set_a
     if(pf->nesting_lvl>0){
         int counter=0;
-        for(counter = 0; counter< set_a->sample_count; counter++){
-            pf_sample_a = pf_nested_set_a + counter;
 
+        for(counter = 0; counter< set_a->sample_count; counter++){
+
+            pf_sample_a = pf_nested_set_a + counter;
+            /*
             if(pf_sample_a->sets[0].samples != NULL)
                 free(pf_sample_a->sets[0].samples);
 
             if(pf_sample_a->sets[1].samples != NULL)
                 free(pf_sample_a->sets[1].samples);
-            //            free(pf_nested_set_a);
-            //            free( pf_get_this_nested_set(pf, pf->current_set));
+
+            */
+
+            int j;
+            for (j = 0; j < 2; j++)
+            {
+                if(pf_sample_a->sets[j].clusters != NULL){
+                    free(pf_sample_a->sets[j].clusters);
+                }
+                if(pf_sample_a->sets[j].kdtree != NULL){
+                    pf_kdtree_free(pf_sample_a->sets[j].kdtree);
+                }
+                if(pf_sample_a->sets[j].samples != NULL){
+                    free(pf_sample_a->sets[j].samples);
+                }
+            }
         }
     }
 
@@ -1294,8 +1324,17 @@ int pf_resample_limit(pf_t *pf, int k)
     double a, b, c, x;
     int n;
 
-    if (k <= 1)
-        return pf->max_samples;
+    int sample_count = pf->sets[pf->current_set].sample_count;
+
+    if (k <= 1){
+        if(k==1 && sample_count>0 && sample_count<pf->max_samples && pf->isNested==0){
+            printf("\n\n\t k: %d\n\n",k );
+            return sample_count;
+        }
+        else{
+            return pf->max_samples;
+        }
+    }
 
     a = 1;
     b = 2 / (9 * ((double) k - 1));
@@ -1565,10 +1604,29 @@ static void pf_copy(pf_t *pf_source, pf_t *pf_dest)
             //pf_dest->sets[i].samples = pf_source->sets[i].samples;
 
             int j=0;
-            pf_dest->sets[i].samples = calloc(pf_source->max_samples, sizeof(pf_sample_t));
+
+            // It's possible that max_samples happens to be less than sample count for
+            // an old set in the pf due to adaptive nature of Adaptive-NPF,
+            // hence allocating space for sample_count instead of max_samples
+            //pf_dest->sets[i].samples = calloc(pf_source->max_samples, sizeof(pf_sample_t));
+
+            pf_dest->sets[i].samples = calloc(pf_source->sets[i].sample_count, sizeof(pf_sample_t));
 
             new_samples = pf_dest->sets[i].samples;
             old_samples = pf_source->sets[i].samples;
+
+            // Not inserting nodes in the kdtree or even computing cluster statistics.
+            // Just allocating memory, since the insertion and cluster stats will happen
+            // after resampling anyways.
+            pf_dest->sets[i].kdtree =  pf_kdtree_alloc(3 * pf_source->sets[i].sample_count);
+
+            pf_dest->sets[i].cluster_count = pf_source->sets[i].cluster_count;
+            pf_dest->sets[i].cluster_max_count = pf_source->sets[i].cluster_max_count;
+            pf_dest->sets[i].clusters = calloc(pf_dest->sets[i].cluster_max_count, sizeof(pf_cluster_t));
+
+
+            pf_dest->sets[i].mean = pf_source->sets[i].mean;
+            pf_dest->sets[i].cov = pf_source->sets[i].cov;
 
             for(j=0; j<pf_dest->sets[i].sample_count ; j++ ){
                 new_sample = new_samples + j;
@@ -1589,15 +1647,6 @@ static void pf_copy(pf_t *pf_source, pf_t *pf_dest)
 
                 new_sample->weight = old_sample->weight;
             }
-
-            pf_dest->sets[i].kdtree = pf_source->sets[i].kdtree;
-
-            pf_dest->sets[i].cluster_count = pf_source->sets[i].cluster_count;
-            pf_dest->sets[i].cluster_max_count = pf_source->sets[i].cluster_max_count;
-            pf_dest->sets[i].clusters = pf_source->sets[i].clusters;
-
-            pf_dest->sets[i].mean = pf_source->sets[i].mean;
-            pf_dest->sets[i].cov = pf_source->sets[i].cov;
 
         }
     }
