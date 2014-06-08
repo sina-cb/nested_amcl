@@ -175,6 +175,7 @@ typedef struct _pf_t
     pf_init_model_fn_t random_pose_fn;
     pf_dual_model_fn_t dual_pose_fn;
 
+    // this is the map actually
     void *random_pose_data;
 
 
@@ -244,6 +245,9 @@ void pf_update_resample(pf_t *pf, double landmark_r, double landmark_phi, double
 // Resample the nested distribution
 void pf_update_nested_resample(pf_t *pf, double landmark_r, double landmark_phi, pf_vector_t upper_particle_pose);
 
+/** Adaptive Nested Resampler **/
+// Resample the nested distribution with changes in particle count
+void pf_update_nested_adaptive_resample(pf_t *pf, double landmark_r, double landmark_phi, pf_vector_t upper_particle_pose);
 
 // Compute the CEP statistics (mean and variance).
 void pf_get_cep_stats(pf_t *pf, pf_vector_t *mean, double *var);

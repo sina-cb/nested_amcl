@@ -1318,7 +1318,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
         }
 
         pf_sample_set_t* set = pf_->sets + pf_->current_set;
-        ROS_INFO("Num samples: %d\n", set->sample_count);
+        ROS_DEBUG("Num samples: %d\n", set->sample_count);
 
         // Publish the resulting cloud
         // TODO: set maximum rate for publishing
@@ -1387,7 +1387,10 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
 
             nested_particlecloud_pub_.publish(nested_cloud_msg);
 
-            //ROS_INFO("normal_particles: %d \t nested_particles: %d", pf_->sets[pf_->current_set].sample_count, total_nested_particle_count);
+            ROS_INFO("\n\n\t normal_particles:\t %d \n\t nested_particles in one pool:\t %d \n\t total nested_particles:\t %d\n",
+                     pf_->sets[pf_->current_set].sample_count,
+                     nested_particles_set->sample_count,
+                     total_nested_particle_count);
         }
 
 

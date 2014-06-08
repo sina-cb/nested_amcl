@@ -86,6 +86,9 @@ pf_t *pf_alloc(int min_samples, int max_samples,
     pf->min_samples = min_samples;
     pf->max_samples = max_samples;
 
+    pf->min_nested_samples = 0;
+    pf->max_nested_samples = 0;
+
     // Control parameters for the population size calculation.  [err] is
     // the max error between the true distribution and the estimated
     // distribution.  [z] is the upper standard normal quantile for (1 -
@@ -129,10 +132,16 @@ pf_t *pf_alloc(int min_samples, int max_samples,
             sample->pose.v[2] = 0.0;
             sample->weight = 1.0 / max_samples;
 
+
             // Also initialize the nested particle filters if present
             if(nesting_level > 0){
 
                 nested_pf = nested_pf_set + i;
+
+                nested_pf->max_samples = pf->max_nested_samples; // This is initialized to 0 for now
+
+                //Removing this in order to implement Adaptive NPF
+                /*
                 pf_nested_alloc(nested_pf, min_nested_samples, max_nested_samples,
                                 alpha_slow, alpha_fast,
                                 random_pose_fn,
@@ -142,7 +151,10 @@ pf_t *pf_alloc(int min_samples, int max_samples,
                                 (nesting_level-1),
                                 0, 0
                                 );
+                */
+
             }
+
         }
 
         // HACK: is 3 times max_samples enough?
@@ -228,6 +240,9 @@ void pf_nested_alloc(pf_t *pf, int min_samples, int max_samples,
         set->sample_count = max_samples;
         set->samples = calloc(max_samples, sizeof(pf_sample_t));
 
+        /*
+              Removing any more levels of nesting to keep things simple for now
+
         // Allocate memory to the fake nested pf sets if present.
         if(nesting_level > 0){
             if(j == 0){
@@ -239,6 +254,7 @@ void pf_nested_alloc(pf_t *pf, int min_samples, int max_samples,
             nested_pf_set = pf_get_this_nested_set(pf,j);
             //nested_pf_set = calloc(max_samples, sizeof(pf_t));
         }
+        */
 
         for (i = 0; i < set->sample_count; i++)
         {
@@ -247,6 +263,9 @@ void pf_nested_alloc(pf_t *pf, int min_samples, int max_samples,
             sample->pose.v[1] = 0.0;
             sample->pose.v[2] = 0.0;
             sample->weight = 1.0 / max_samples;
+
+            /*
+              Removing any more levels of nesting to keep things simple for now
 
             // Also initialize the nested particle filters if present
             if(nesting_level > 0){
@@ -263,6 +282,7 @@ void pf_nested_alloc(pf_t *pf, int min_samples, int max_samples,
                                 0, 0
                                 );
             }
+            */
         }
 
         // HACK: is 3 times max_samples enough?
@@ -382,6 +402,9 @@ void pf_init(pf_t *pf, pf_vector_t mean, pf_matrix_t cov, map_t* map)
     pf_cluster_stats(set);
 
 
+    /*
+    Removing initialization of Nested PFs to allow implementation of Adaptive NPF
+
     // Initializing all the lower level filters with the exact same parameters as the current one
     // This is a hack, and will only work correctly when we are initializing the filter for
     // the first time, and not when we want to RECONFIGURE the filter.
@@ -392,6 +415,8 @@ void pf_init(pf_t *pf, pf_vector_t mean, pf_matrix_t cov, map_t* map)
             pf_init(nested_pf, mean, cov, map);
         }
     }
+
+    */
 
 
     return;
@@ -678,7 +703,9 @@ void pf_update_resample(pf_t *pf, double landmark_r, double landmark_phi, double
 
                 // Add sample to list
                 sample_b->pose = sample_a->pose;
-                if(pf->nesting_lvl > 0){
+
+                // Copy nested pf if nested particles more than 0
+                if(pf->nesting_lvl > 0 && pf->max_nested_samples > 0){
                     pf_copy(pf_sample_a, pf_sample_b);
                     //pf_update_nested_resample(pf_sample_b, landmark_r, landmark_phi, sample_b->pose);
                 }
@@ -695,20 +722,62 @@ void pf_update_resample(pf_t *pf, double landmark_r, double landmark_phi, double
 
     } // End looping through for resampling
 
-    //Resample all nested particles
-    if(pf->nesting_lvl>0){
+
+
+
+    int old_max_nested_samples = pf->max_nested_samples;
+    pf->max_nested_samples = (int)((pf->max_samples - set_b->sample_count)/set_b->sample_count);
+
+
+    //Resample all nested particles (if particles exist)
+
+    if(pf->nesting_lvl>0 && pf->max_nested_samples>0){
+
         int sample_counter = 0;
+
         while(sample_counter < set_b->sample_count){
 
             sample_b = set_b->samples + sample_counter;
             pf_sample_b = pf_nested_set_b + sample_counter;
 
-            //pf_copy(pf_sample_a, pf_sample_b);
-            pf_update_nested_resample(pf_sample_b, landmark_r, landmark_phi, sample_b->pose);
+            //pf_sample_b->max_samples = pf->max_nested_samples;
+
+
+            // allocate and initiate from scratch if no nested particles before this
+            if(old_max_nested_samples <= 0 ){
+                pf_nested_alloc(pf_sample_b,
+                                0,
+                                pf->max_nested_samples,
+                                pf->alpha_slow,
+                                pf->alpha_fast,
+                                pf->random_pose_fn,
+                                pf->dual_pose_fn,
+                                pf->random_pose_data,
+                                pf->nesting_lvl-1,
+                                0,0);
+
+                pf_init(pf_sample_b,
+                        pf_vector_zero(),
+                        pf_matrix_zero(),
+                        pf->random_pose_data
+                        );
+            }
+
+            else{ // When Nested particles exist before this
+
+                if(old_max_nested_samples == pf->max_nested_samples){
+                    //pf_copy(pf_sample_a, pf_sample_b);
+                    pf_update_nested_resample(pf_sample_b, landmark_r, landmark_phi, sample_b->pose);
+                }
+                else{
+                    pf_update_nested_adaptive_resample(pf_sample_b, landmark_r, landmark_phi, sample_b->pose);
+                }
+            }
+
 
             sample_counter++;
         }
-    }
+    }// End Resampling of Nested Particles
 
     //Free all memory related to pf_nested_set_a
     if(pf->nesting_lvl>0){
@@ -716,8 +785,11 @@ void pf_update_resample(pf_t *pf, double landmark_r, double landmark_phi, double
         for(counter = 0; counter< set_a->sample_count; counter++){
             pf_sample_a = pf_nested_set_a + counter;
 
-            free(pf_sample_a->sets[0].samples);
-            free(pf_sample_a->sets[1].samples);
+            if(pf_sample_a->sets[0].samples != NULL)
+                free(pf_sample_a->sets[0].samples);
+
+            if(pf_sample_a->sets[1].samples != NULL)
+                free(pf_sample_a->sets[1].samples);
             //            free(pf_nested_set_a);
             //            free( pf_get_this_nested_set(pf, pf->current_set));
         }
@@ -770,10 +842,13 @@ void pf_update_nested_resample(pf_t *pf, double landmark_r, double landmark_phi,
     set_a = pf->sets + pf->current_set;
     set_b = pf->sets + (pf->current_set + 1) % 2;
 
+    /*
+      Removing any more levels of nesting to keep things simple for now
     if(pf->nesting_lvl > 0){
         pf_nested_set_a = pf_get_this_nested_set(pf, pf->current_set);
         pf_nested_set_b = pf_get_this_nested_set(pf, (pf->current_set +1) % 2);
     }
+    */
 
     // Create the kd tree for adaptive sampling
     pf_kdtree_clear(set_b->kdtree);
@@ -799,17 +874,24 @@ void pf_update_nested_resample(pf_t *pf, double landmark_r, double landmark_phi,
 
     while(set_b->sample_count < M)
     {
+
+        /*
+          Removing any more levels of nesting to keep things simple for now
         if(pf->nesting_lvl > 0){
             pf_sample_b = pf_nested_set_b + set_b->sample_count;
         }
+        */
+
         sample_b = set_b->samples + set_b->sample_count++;
 
         //    if(drand48() < w_diff){
 
         if( (pf->isNested != 0) && drand48() < 0.05 && (landmark_r > 0)){
+            /*
             //if( (DUAL_MCL == 1) ){
                 //KPM..this is the original random sampling function
                 //sample_b->pose = (pf->random_pose_fn)(pf->random_pose_data);
+            */
 
                 //KPM ...trying dual sampling instead of random sampling
                 sample_b->pose = nested_dual_fn(pf->random_pose_data, landmark_r, landmark_phi, upper_particle_pose);
@@ -869,20 +951,28 @@ void pf_update_nested_resample(pf_t *pf, double landmark_r, double landmark_phi,
                 assert(i<set_a->sample_count);
 
                 sample_a = set_a->samples + i;
+
+                /*
+                  Removing any more levels of nesting to keep things simple for now
                 if(pf->nesting_lvl > 0){
                     pf_sample_a = pf_nested_set_a + i;
                 }
+                */
 
                 assert(sample_a->weight > 0);
 
                 // Add sample to list
                 sample_b->pose = sample_a->pose;
+
+                /*
+                  Removing any more levels of nesting to keep things simple for now
                 if(pf->nesting_lvl > 0){
 
                     pf_copy(pf_sample_a, pf_sample_b);
 
                     pf_update_nested_resample(pf_sample_b, landmark_r, landmark_phi, sample_b->pose);
                 }
+                */
 
             }
         }
@@ -897,6 +987,9 @@ void pf_update_nested_resample(pf_t *pf, double landmark_r, double landmark_phi,
     }
 
 
+    /*
+      Removing any more levels of nesting to keep things simple for now
+
     //Free all memory related to pf_nested_set_a
     if(pf->nesting_lvl>0){
         int counter=0;
@@ -909,6 +1002,7 @@ void pf_update_nested_resample(pf_t *pf, double landmark_r, double landmark_phi,
             //            free( pf_get_this_nested_set(pf, pf->current_set));
         }
     }
+    */
 
 
     // Reset averages, to avoid spiraling off into complete randomness.
@@ -935,6 +1029,259 @@ void pf_update_nested_resample(pf_t *pf, double landmark_r, double landmark_phi,
 
 
 
+
+
+/** Adaptive Resamplers **/
+
+
+// Resample the nested distribution
+void pf_update_nested_adaptive_resample(pf_t *pf, double landmark_r, double landmark_phi, pf_vector_t upper_particle_pose)
+{
+    int i;
+    double total;
+    pf_sample_set_t *set_a, *set_b;
+    pf_sample_t *sample_a, *sample_b;
+
+    pf_t *pf_nested_set_a,*pf_nested_set_b;
+    pf_t *pf_sample_a, *pf_sample_b;
+
+    double r,c,U;
+    int m;
+    double count_inv;
+
+    double w_diff;
+
+    set_a = pf->sets + pf->current_set;
+    set_b = pf->sets + (pf->current_set + 1) % 2;
+
+
+    // ********
+    // Re-Initializing set_b related stuff since the memory allocations are changing due to a new max_sample count
+
+    // Free all pf related memory from any earlier iteration (set_b might have been used before)
+    if(set_b->clusters != NULL){
+        free(set_b->clusters);
+        set_b->clusters = NULL;
+    }
+    if(set_b->kdtree != NULL){
+        pf_kdtree_free(set_b->kdtree);
+        set_b->kdtree = NULL;
+    }
+    if(set_b->samples != NULL){
+        free(set_b->samples);
+        set_b->samples = NULL;
+    }
+
+    // Allocate new kdtree for the nested particle set: "set_b" (the next set, not current set)
+    // HACK: is 3 times max_samples enough?
+    set_b->kdtree = pf_kdtree_alloc(3 * pf->max_samples);
+
+    // new clusters
+    set_b->cluster_count = 0;
+    set_b->cluster_max_count = pf->max_samples;
+    set_b->clusters = calloc(set_b->cluster_max_count, sizeof(pf_cluster_t));
+
+    set_b->mean = set_a->mean;
+    set_b->cov = set_a->cov;
+
+    // new samples (with new "max_samples" count...could be either higher or lower than before, doesn't matter)
+    set_b->samples = calloc(pf->max_samples, sizeof(pf_sample_t));
+
+
+    // Create the kd tree for adaptive sampling
+    pf_kdtree_clear(set_b->kdtree);
+
+
+    // ********
+
+
+    /*
+      Removing any more levels of nesting to keep things simple for now
+    if(pf->nesting_lvl > 0){
+        pf_nested_set_a = pf_get_this_nested_set(pf, pf->current_set);
+        pf_nested_set_b = pf_get_this_nested_set(pf, (pf->current_set +1) % 2);
+    }
+    */
+
+
+
+    // Draw samples from set a to create set b.
+    total = 0;
+    set_b->sample_count = 0;
+
+
+    w_diff = 1.0 - pf->w_fast / pf->w_slow;
+    if(w_diff < 0.0)
+        w_diff = 0.0;
+    //printf("w_diff: %9.6f\n", w_diff);
+
+    int M = pf_resample_limit(pf, set_a->kdtree->leaf_count);
+    //  printf("M: %i\n", M);
+
+
+
+
+    // Low-variance resampler, taken from Probabilistic Robotics, p110
+    count_inv = 1.0/M;
+    r = drand48() * count_inv;
+    c = set_a->samples[0].weight;
+    i = 0;
+    m = 0;
+
+    while(set_b->sample_count < M)
+    {
+
+        /*
+          Removing any more levels of nesting to keep things simple for now
+        if(pf->nesting_lvl > 0){
+            pf_sample_b = pf_nested_set_b + set_b->sample_count;
+        }
+        */
+
+        sample_b = set_b->samples + set_b->sample_count++;
+
+        //    if(drand48() < w_diff){
+
+        if( (pf->isNested != 0) && drand48() < 0.05 && (landmark_r > 0)){
+            /*
+            //if( (DUAL_MCL == 1) ){
+                //KPM..this is the original random sampling function
+                //sample_b->pose = (pf->random_pose_fn)(pf->random_pose_data);
+            */
+
+                //KPM ...trying dual sampling instead of random sampling
+                sample_b->pose = nested_dual_fn(pf->random_pose_data, landmark_r, landmark_phi, upper_particle_pose);
+
+            //}
+            /*
+            else{
+                sample_b->pose = (pf->random_pose_fn)(pf->random_pose_data);
+            }
+            */
+        }
+
+
+        else{
+
+            if(drand48() < w_diff){ // Recovery for normal particles
+
+
+                /** Turning off DUAL sampling for non-nested particles for the moment. Re-enable this when it is ready
+                if(DUAL_MCL == 1){ //KPM ...trying dual sampling instead of random sampling
+                    sample_b->pose = (pf->dual_pose_fn)(pf->random_pose_data, landmark_r, landmark_phi, landmark_x, landmark_y);
+                }
+
+                */
+
+                //else{ //Added by KPM to take random samples only when DUAL is turned off. Originally this condition was absent
+
+                sample_b->pose = (pf->random_pose_fn)(pf->random_pose_data);
+
+                //}
+
+            }
+
+            else
+            {
+
+                // Low-variance resampler, taken from Probabilistic Robotics, p110
+                U = r + m * count_inv;
+                while(U>c)
+                {
+                    i++;
+                    // Handle wrap-around by resetting counters and picking a new random
+                    // number
+                    if(i >= set_a->sample_count)
+                    {
+                        r = drand48() * count_inv;
+                        c = set_a->samples[0].weight;
+                        i = 0;
+                        m = 0;
+                        U = r + m * count_inv;
+                        continue;
+                    }
+                    c += set_a->samples[i].weight;
+                }
+                m++;
+
+                assert(i<set_a->sample_count);
+
+                sample_a = set_a->samples + i;
+
+                /*
+                  Removing any more levels of nesting to keep things simple for now
+                if(pf->nesting_lvl > 0){
+                    pf_sample_a = pf_nested_set_a + i;
+                }
+                */
+
+                assert(sample_a->weight > 0);
+
+                // Add sample to list
+                sample_b->pose = sample_a->pose;
+
+                /*
+                  Removing any more levels of nesting to keep things simple for now
+                if(pf->nesting_lvl > 0){
+
+                    pf_copy(pf_sample_a, pf_sample_b);
+
+                    pf_update_nested_resample(pf_sample_b, landmark_r, landmark_phi, sample_b->pose);
+                }
+                */
+
+            }
+        }
+
+
+        sample_b->weight = 1.0;
+        total += sample_b->weight;
+
+        // Add sample to histogram
+        pf_kdtree_insert(set_b->kdtree, sample_b->pose, sample_b->weight);
+
+    }
+
+
+    /*
+      Removing any more levels of nesting to keep things simple for now
+
+    //Free all memory related to pf_nested_set_a
+    if(pf->nesting_lvl>0){
+        int counter=0;
+        for(counter = 0; counter< set_a->sample_count; counter++){
+            pf_sample_a = pf_nested_set_a + counter;
+
+            free(pf_sample_a->sets[0].samples);
+            free(pf_sample_a->sets[1].samples);
+            //            free(pf_nested_set_a);
+            //            free( pf_get_this_nested_set(pf, pf->current_set));
+        }
+    }
+    */
+
+
+    // Reset averages, to avoid spiraling off into complete randomness.
+    if(w_diff > 0.0)
+        pf->w_slow = pf->w_fast = 0.0;
+
+    //fprintf(stderr, "\n\n");
+
+    // Normalize weights
+    for (i = 0; i < set_b->sample_count; i++)
+    {
+        sample_b = set_b->samples + i;
+        sample_b->weight /= total;
+    }
+
+    // Re-compute cluster statistics
+    pf_cluster_stats(set_b);
+
+    // Use the newly created sample set
+    pf->current_set = (pf->current_set + 1) % 2;
+
+    return;
+}
 
 
 
