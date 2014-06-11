@@ -609,7 +609,7 @@ void pf_update_resample(pf_t *pf, double landmark_r, double landmark_phi, double
     }
 
     // Create the kd tree for adaptive sampling
-    pf_kdtree_clear(set_b->kdtree);
+    // pf_kdtree_clear(set_b->kdtree);
 
     // Draw samples from set a to create set b.
     total = 0;
@@ -623,6 +623,52 @@ void pf_update_resample(pf_t *pf, double landmark_r, double landmark_phi, double
 
     int M = pf_resample_limit(pf, set_a->kdtree->leaf_count);
     //  printf("M: %i\n", M);
+
+
+    // ********
+    // Re-Initializing set_b related stuff since the memory allocations are changing due to a new 'M'
+
+    // Free all pf related memory from any earlier iteration (set_b might have been used
+    // before...especially in pf_init)
+    if(set_b->clusters != NULL){
+        free(set_b->clusters);
+        set_b->clusters = NULL;
+    }
+    if(set_b->kdtree != NULL){
+        pf_kdtree_free(set_b->kdtree);
+        set_b->kdtree = NULL;
+    }
+    if(set_b->samples != NULL){
+        free(set_b->samples);
+        set_b->samples = NULL;
+    }
+
+    // Allocate new kdtree for the set_b particle set: "set_b" (the next set, not current set)
+    // HACK: is 3 times max_samples enough?
+    set_b->kdtree = pf_kdtree_alloc(3 * M);
+
+    // new clusters
+    set_b->cluster_count = 0;
+    set_b->cluster_max_count = M;
+    set_b->clusters = calloc(set_b->cluster_max_count, sizeof(pf_cluster_t));
+
+    set_b->mean = set_a->mean;
+    set_b->cov = set_a->cov;
+
+    // new samples (with new "M" count...could be either higher or lower than before, doesn't matter)
+    set_b->samples = calloc(M, sizeof(pf_sample_t));
+
+
+    // Create the kd tree for adaptive sampling
+    pf_kdtree_clear(set_b->kdtree);
+
+
+    // ********
+
+
+
+
+
     // Low-variance resampler, taken from Probabilistic Robotics, p110
     count_inv = 1.0/M;
     r = drand48() * count_inv;
@@ -788,7 +834,31 @@ void pf_update_resample(pf_t *pf, double landmark_r, double landmark_phi, double
 
         else{ // when current max_nested_particles is 0 or less than 0
 
+            int counter=0;
 
+            // free all memory related to this set of pf samples since we do not need it right now.
+            // It is going to e reallocated and re-initiated if and when we need it later anyways.
+            for(counter = 0; counter< set_b->sample_count; counter++){
+
+                pf_sample_b = pf_nested_set_b + counter;
+
+                int j;
+                for (j = 0; j < 2; j++)
+                {
+                    if(pf_sample_b->sets[j].clusters != NULL){
+                        free(pf_sample_b->sets[j].clusters);
+                        pf_sample_b->sets[j].clusters = NULL;
+                    }
+                    if(pf_sample_b->sets[j].kdtree != NULL){
+                        pf_kdtree_free(pf_sample_b->sets[j].kdtree);
+                        pf_sample_b->sets[j].kdtree = NULL;
+                    }
+                    if(pf_sample_b->sets[j].samples != NULL){
+                        free(pf_sample_b->sets[j].samples);
+                        pf_sample_b->sets[j].samples = NULL;
+                    }
+                }
+            }
         }
 
     }// End Resampling of Nested Particles
@@ -824,6 +894,27 @@ void pf_update_resample(pf_t *pf, double landmark_r, double landmark_phi, double
             }
         }
     }
+
+
+    // **************
+    // Memory deallocation for normal particles in set_a
+    // Free all memory for set_a from current iteration, since it will get reallocated later
+    if(set_a->clusters != NULL){
+        free(set_a->clusters);
+        set_a->clusters = NULL;
+    }
+    if(set_a->kdtree != NULL){
+        pf_kdtree_free(set_a->kdtree);
+        set_a->kdtree = NULL;
+    }
+    if(set_a->samples != NULL){
+        free(set_a->samples);
+        set_a->samples = NULL;
+    }
+
+    // **************
+
+
 
 
     // Reset averages, to avoid spiraling off into complete randomness.
