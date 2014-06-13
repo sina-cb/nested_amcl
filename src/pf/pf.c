@@ -328,7 +328,7 @@ void pf_free(pf_t *pf)
             }
 
             // Frees up all lower level filters too
-            if(pf->nesting_lvl > 0){
+            if(pf->nesting_lvl > 0 && pf->max_nested_samples > 0){
 
                 nested_pf_set = pf_get_this_nested_set(pf,i);
                 int j;
@@ -496,40 +496,47 @@ void pf_update_sensor(pf_t *pf, pf_sensor_model_fn_t sensor_fn, void *sensor_dat
 
 // Update the filter with some new sensor observation
 void pf_update_nested_sensor(pf_t *pf,
-                             pf_sensor_model_fn_t sensor_fn,
+                             pf_sensor_AW_model_fn_t sensor_fn,
                              pf_nested_sensor_model_fn_t nested_sensor_fn,
                              void *sensor_data)
 {
     pf_sample_set_t *set;
     pf_sample_t *sample;
+    pf_t *nested_pf_set;
     double total;
 
     set = pf->sets + pf->current_set;
+    nested_pf_set = pf_get_this_nested_set(pf, pf->current_set);
 
-    // Compute the sample weights
-    total = (*sensor_fn) (sensor_data, set);
 
-    normalize_weights(total, pf);
-
-    if(pf->nesting_lvl > 0){
+    // Compute sample weights for Nested particles
+    if(pf->nesting_lvl > 0 && pf->max_nested_samples > 0){
         int i = 0;
         int nested_total = 0;
-        pf_t *nested_pf_set, *nested_pf;
+        pf_t *nested_pf;
         pf_sample_set_t nested_set;
 
-        nested_pf_set = pf_get_this_nested_set(pf, pf->current_set);
+        //nested_pf_set = pf_get_this_nested_set(pf, pf->current_set);
 
         for(i=0; i<set->sample_count; i++){
             sample = set->samples + i;
             nested_pf = nested_pf_set + i;
 
             if(nested_pf->max_samples > 0){
-                nested_set = nested_pf->sets[nested_pf_set->current_set];
+                nested_set = nested_pf->sets[nested_pf_set->current_set]; //TODO: this should be [nested_pf->current_set]
                 nested_total = (*nested_sensor_fn) (sample, sensor_data, &nested_set);
                 normalize_weights(nested_total, nested_pf_set);
             }
         }
     }
+
+
+    // Compute the sample weights for normal particles
+    total = (*sensor_fn) (sensor_data, set, nested_pf_set);
+
+    normalize_weights(total, pf);
+
+
 
     return;
 }
@@ -551,6 +558,7 @@ static void normalize_weights(double total, pf_t* pf){
         {
             sample = set->samples + i;
             w_avg += sample->weight;
+            sample->non_normalized_weight = sample->weight;
             sample->weight /= total;
         }
         // Update running averages of likelihood of samples (Prob Rob p258)
