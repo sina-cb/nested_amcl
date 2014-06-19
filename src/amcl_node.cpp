@@ -1387,11 +1387,12 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
 
             nested_particlecloud_pub_.publish(nested_cloud_msg);
 
-            printf(" This is getting printed! Yay!!!");
-            ROS_INFO("\n\n\t normal_particles:\t %d \n\t nested_particles in one pool:\t %d \n\t total nested_particles:\t %d\n",
+            //printf(" This is getting printed! Yay!!!");
+            ROS_INFO("\n\n\t normal_particles:\t\t %d \n\t nested_particles in one pool:\t %d \n\t Total nested_particles:\t %d\n\t Grand Total of particles:\t %d\n",
                      pf_->sets[pf_->current_set].sample_count,
                      nested_particles_set->sample_count,
-                     total_nested_particle_count);
+                     total_nested_particle_count,
+                     pf_->sets[pf_->current_set].sample_count + total_nested_particle_count);
         }
 
 

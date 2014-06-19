@@ -385,7 +385,7 @@ void AMCLOdom::getNestedParticlePose(pf_vector_t *odom_pose, pf_vector_t *delta,
       }
   }
 
-  nested_delta_trans = 0.7 * nested_delta_trans; //reducing to 70% from expected behaviour
+  nested_delta_trans = 0.75 * nested_delta_trans; //reducing to 75% from expected behaviour
 
   double map_range = map_calc_range(this->map, odom_pose->v[0], odom_pose->v[1], odom_pose->v[2], 10);
 

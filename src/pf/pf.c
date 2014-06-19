@@ -1427,7 +1427,7 @@ int pf_resample_limit(pf_t *pf, int k)
 
     if (k <= 1){
         if(k==1 && sample_count>0 && sample_count<pf->max_samples && pf->isNested==0){
-            printf("\n\n\t k: %d\n\n",k );
+            printf("\n\n\t ****** k: %d ****** \n",k );
             return sample_count;
         }
         else{
