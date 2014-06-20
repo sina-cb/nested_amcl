@@ -806,10 +806,25 @@ void pf_update_resample(pf_t *pf, double landmark_r, double landmark_phi, double
         for(counter = 0; counter< set_a->sample_count; counter++){
             pf_sample_a = pf_nested_set_a + counter;
 
-            free(pf_sample_a->sets[0].samples);
-            free(pf_sample_a->sets[1].samples);
-            //            free(pf_nested_set_a);
-            //            free( pf_get_this_nested_set(pf, pf->current_set));
+
+            int j;
+
+            for (j = 0; j < 2; j++)
+            {
+                if(pf_sample_a->sets[j].clusters != NULL){
+                    free(pf_sample_a->sets[j].clusters);
+                    pf_sample_a->sets[j].clusters = NULL;
+                }
+                if(pf_sample_a->sets[j].kdtree != NULL){
+                    pf_kdtree_free(pf_sample_a->sets[j].kdtree);
+                    pf_sample_a->sets[j].kdtree = NULL;
+                }
+                if(pf_sample_a->sets[j].samples != NULL){
+                    free(pf_sample_a->sets[j].samples);
+                    pf_sample_a->sets[j].samples = NULL;
+                }
+            }
+
         }
     }
 
@@ -1006,10 +1021,25 @@ void pf_update_nested_resample(pf_t *pf, double landmark_r, double landmark_phi,
         for(counter = 0; counter< set_a->sample_count; counter++){
             pf_sample_a = pf_nested_set_a + counter;
 
-            free(pf_sample_a->sets[0].samples);
-            free(pf_sample_a->sets[1].samples);
+            // free(pf_sample_a->sets[0].samples);
+            // free(pf_sample_a->sets[1].samples);
             //            free(pf_nested_set_a);
             //            free( pf_get_this_nested_set(pf, pf->current_set));
+
+            int j;
+
+            for (j = 0; j < 2; j++)
+            {
+                if(pf_sample_a->sets[j].clusters != NULL){
+                    free(pf_sample_a->sets[j].clusters);
+                }
+                if(pf_sample_a->sets[j].kdtree != NULL){
+                    pf_kdtree_free(pf_sample_a->sets[j].kdtree);
+                }
+                if(pf_sample_a->sets[j].samples != NULL){
+                    free(pf_sample_a->sets[j].samples);
+                }
+            }
         }
     }
 
@@ -1315,6 +1345,21 @@ static void pf_copy(pf_t *pf_source, pf_t *pf_dest)
         if(pf_source->sets[i].samples != NULL){
 
 
+            /* Freeing up the pf_dest related memory if it has already been initiated */
+            if(pf_dest->sets[i].clusters != NULL){
+                free(pf_dest->sets[i].clusters);
+                pf_dest->sets[i].clusters = NULL;
+            }
+            if(pf_dest->sets[i].kdtree != NULL){
+                pf_kdtree_free(pf_dest->sets[i].kdtree);
+                pf_dest->sets[i].kdtree = NULL;
+            }
+            if(pf_dest->sets[i].samples != NULL){
+                free(pf_dest->sets[i].samples);
+                pf_dest->sets[i].samples = NULL;
+            }
+
+
             pf_dest->sets[i].sample_count = pf_source->sets[i].sample_count;
 
             // This might be causing several different nested particles to point to same pool of samples
@@ -1326,26 +1371,43 @@ static void pf_copy(pf_t *pf_source, pf_t *pf_dest)
             new_samples = pf_dest->sets[i].samples;
             old_samples = pf_source->sets[i].samples;
 
+            // Not inserting nodes in the kdtree or even computing cluster statistics.
+            // Just allocating memory, since the insertion and cluster stats will happen
+            // after resampling anyways.
+
+            pf_dest->sets[i].kdtree =  pf_kdtree_alloc(3 * pf_source->max_samples);
+
+            pf_dest->sets[i].cluster_count = pf_source->sets[i].cluster_count;
+            pf_dest->sets[i].cluster_max_count = pf_source->sets[i].cluster_max_count;
+            pf_dest->sets[i].clusters = calloc(pf_source->max_samples, sizeof(pf_cluster_t));
+
+
+            pf_dest->sets[i].mean = pf_source->sets[i].mean;
+            pf_dest->sets[i].cov = pf_source->sets[i].cov;
+
             for(j=0; j<pf_dest->sets[i].sample_count ; j++ ){
                 new_sample = new_samples + j;
                 old_sample = old_samples + j;
 
-                //                ROS_INFO("i: %d \t j: %d", i, j);
-
-                //                pf_vector_t temp_pose = calloc(1, sizeof(pf_vector_t));
-
-                //                pf_vector_t temp_pose;
-                //                temp_pose = old_samples->pose;
+                /*
+                ROS_INFO("i: %d \t j: %d", i, j);
+                pf_vector_t temp_pose = calloc(1, sizeof(pf_vector_t));
+                pf_vector_t temp_pose;
+                temp_pose = old_samples->pose;
+                */
 
                 new_sample->pose = old_sample->pose;
 
-                //                new_samples->pose.v[0] = old_samples->pose.v[0];
-                //                new_samples->pose.v[1] = old_samples->pose.v[1];
-                //                new_samples->pose.v[2] = old_samples->pose.v[2];
+                /*
+                new_samples->pose.v[0] = old_samples->pose.v[0];
+                new_samples->pose.v[1] = old_samples->pose.v[1];
+                new_samples->pose.v[2] = old_samples->pose.v[2];
+                */
 
                 new_sample->weight = old_sample->weight;
             }
 
+            /*
             pf_dest->sets[i].kdtree = pf_source->sets[i].kdtree;
 
             pf_dest->sets[i].cluster_count = pf_source->sets[i].cluster_count;
@@ -1354,7 +1416,7 @@ static void pf_copy(pf_t *pf_source, pf_t *pf_dest)
 
             pf_dest->sets[i].mean = pf_source->sets[i].mean;
             pf_dest->sets[i].cov = pf_source->sets[i].cov;
-
+            */
         }
     }
 
