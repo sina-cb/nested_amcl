@@ -34,7 +34,7 @@
 #include "pf_pdf.h"
 #include "pf_kdtree.h"
 
-//#include "ros/console.h"
+//#include "ros/ros.h"
 
 #define DUAL_MCL 1
 
@@ -1080,8 +1080,18 @@ int pf_resample_limit(pf_t *pf, int k)
     double a, b, c, x;
     int n;
 
-    if (k <= 1)
-        return pf->max_samples;
+    int sample_count = pf->sets[pf->current_set].sample_count;
+
+    if (k <= 1){
+        if(k==1 && sample_count>0 && sample_count<pf->max_samples && pf->isNested==0){
+            printf("\n\n\t ****** k: %d ****** \n",k );
+            return sample_count;
+        }
+        else{
+            return pf->max_samples;
+        }
+    }
+
 
     a = 1;
     b = 2 / (9 * ((double) k - 1));
