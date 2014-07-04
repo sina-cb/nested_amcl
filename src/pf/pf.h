@@ -69,6 +69,11 @@ typedef double (*pf_sensor_model_fn_t) (void *sensor_data,
                                         struct _pf_sample_set_t* set);
 
 
+// Function prototype for the sensor model with advanced weighting; determines the probability
+// for the given set of sample poses.
+typedef double (*pf_sensor_AW_model_fn_t) (void *sensor_data,
+                                           struct _pf_sample_set_t* set, struct _pf_t * nested_pf_set);
+
 
 
 // Information for a single sample
@@ -79,6 +84,9 @@ typedef struct
 
     // Weight for this pose
     double weight;
+
+    // Non-Normalized weight for this pose
+    double non_normalized_weight;
 
 } pf_sample_t;
 
@@ -236,7 +244,7 @@ void pf_update_action(pf_t *pf, pf_action_model_fn_t action_fn, void *action_dat
 void pf_update_sensor(pf_t *pf, pf_sensor_model_fn_t sensor_fn, void *sensor_data);
 
 // Update the nested filter with some new sensor observation
-void pf_update_nested_sensor(pf_t *pf, pf_sensor_model_fn_t sensor_fn, pf_nested_sensor_model_fn_t nested_sensor_fn, void *sensor_data);
+void pf_update_nested_sensor(pf_t *pf, pf_sensor_AW_model_fn_t sensor_fn, pf_nested_sensor_model_fn_t nested_sensor_fn, void *sensor_data);
 
 
 // Resample the distribution

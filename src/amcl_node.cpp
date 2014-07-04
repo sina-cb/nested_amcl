@@ -382,7 +382,7 @@ AmclNode::AmclNode() :
     std::string home_path = std::string(getenv("HOME"));
 
 
-    algo_name = "SNPF";
+    algo_name = "SNPF-AW";
 
     std::string file_name;
 

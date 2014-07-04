@@ -98,6 +98,19 @@ class AMCLLaser : public AMCLSensor
                                               pf_sample_set_t* set);
 
 
+  // **** Advanced Weighting sensor models ****
+
+  // Determine the probability for the given pose
+  private: static double BeamModel_AW(AMCLLaserData *data,
+                                      pf_sample_set_t* set, struct _pf_t * nested_pf_set);
+
+  // Determine the probability for the given pose
+  private: static double LikelihoodFieldModel_AW(AMCLLaserData *data,
+                                                 pf_sample_set_t* set, struct _pf_t * nested_pf_set);
+
+
+
+
   // Determine the probability of nested particles for the given pose
   private: static double NestedBeamModel(pf_sample_t *upper_sample,
                                          AMCLLaserData *data,
