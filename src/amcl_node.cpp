@@ -62,6 +62,11 @@
 #include "cmvision/Blobs.h"
 #include "cmvision/Blob.h"
 
+
+#include <fstream>
+#include <iostream>
+
+
 #define NEW_UNIFORM_SAMPLING 1
 
 //This is = (57/640)*(M_PI/180)
@@ -136,7 +141,20 @@ private:
     int type_object;
     double landmark_phi;
     double landmark_r;
+
     double get_landmark_r();
+
+    /* Initializing the file into which we'll collect all our data */
+    std::ofstream *data_collection_fstream;
+    std::string filename_abs;
+
+    std::string file_path_from_home;
+    std::string algo_name;
+    std::string robot_start_config_id;
+    std::string trajectory_id;
+    long int start_timestamp;
+    int run_number;
+
     /* *** */
 
 
@@ -357,6 +375,101 @@ AmclNode::AmclNode() :
 
 
 
+
+
+    /* ****Data Collection**** */
+
+    std::string home_path = std::string(getenv("HOME"));
+
+
+    algo_name = "SNPF";
+
+    std::string file_name;
+
+
+
+    private_nh_.param("robot_start_config_id", robot_start_config_id, std::string("DefaultConfig") );
+    private_nh_.param("trajectory_id", trajectory_id, std::string("DefaultTrajectory"));
+    private_nh_.param("file_path_from_home", file_path_from_home, std::string("/NPF_run_dumps/Data"));
+    private_nh_.param("run_number", run_number, 0);
+
+
+    /* --- Get current timestamp in milliseconds to append to filename --- */
+
+    // Get timestamp
+    struct timeval tp;
+    gettimeofday(&tp, NULL);
+    start_timestamp = tp.tv_sec * 1000 + tp.tv_usec / 1000; //get current timestamp in milliseconds
+
+    /* --- End of timestamp getting --- */
+
+    // Putting all name related data into a stream so we can
+    // convert it all together and put it into a string
+
+    std::stringstream file_name_strstream;
+
+    file_name_strstream << algo_name << "_"
+                        << robot_start_config_id << "_"
+                        << trajectory_id << "_"
+                        << run_number << "_"
+                        << max_particles_ << "_"
+                        << max_nested_particles_ << "_"
+                        << start_timestamp;
+
+    file_name_strstream >> file_name;
+
+
+    data_collection_fstream = new std::ofstream;
+
+    filename_abs = home_path + file_path_from_home + "/" + file_name + ".txt";
+
+    data_collection_fstream->open(filename_abs.c_str());
+
+    if (data_collection_fstream->is_open()) {
+        printf("-----Filestream opened successfully-----\n"
+               "\t Folder  : %s \n"
+               "\t Filename: %s \n\n",
+               file_path_from_home.c_str(), file_name.c_str());
+
+        *data_collection_fstream << "algo_name" << ","
+                                 << "robot_start_config_id" << ","
+                                 << "trajectory_id" << ","
+                                 << "run_number" << ","
+                                 << "start_timestamp" << ","
+                                 << "max_particles" << ","
+                                 << "max_nested_particles" << ","
+                                 << "elapsed_time" << ","
+                                 << "current normal particle count" << ","
+                                 << "avg weight"<< ","
+                                 << "cov.m[0][0]" << ","
+                                 << "cov.m[1][1]" << ","
+                                 << "cov.m[2][2]" << ","
+                                 << "covariance sum" << ","
+                                 << "other robot observed" << ","
+                                 << "other robot distance" << ","
+                                 << "current nested_particle count" << ","
+                                 << "total_nested_particle_count" << "\n";
+
+        data_collection_fstream->close();
+
+    }
+    else{
+        printf("\n ********** Filestream opening ERROR!!! ********** \n");
+
+        std::cin.ignore(); //just awaiting a keypress of "Enter" to
+                           //proceed just to make sure this is read
+        exit(1);
+    }
+
+
+
+
+    /* **** End of Data collection related stuff **** */
+
+
+
+
+
     /**** Initializing Laser Model ****/
     std::string tmp_model_type;
     private_nh_.param("laser_model_type", tmp_model_type, std::string("likelihood_field"));
@@ -452,6 +565,11 @@ AmclNode::AmclNode() :
     for(int i=0; i<= 641; i++){
         color_angles[i] = false;
     }
+
+
+
+
+
 }
 
 void AmclNode::reconfigureCB(AMCLConfig &config, uint32_t level)
@@ -785,6 +903,9 @@ AmclNode::~AmclNode()
     delete initial_pose_sub_;
     delete tfb_;
     delete tf_;
+
+    delete data_collection_fstream;
+
     // TODO: delete everything allocated in constructor
 }
 
@@ -1387,12 +1508,88 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
 
             nested_particlecloud_pub_.publish(nested_cloud_msg);
 
+
+
+
+
             //printf(" This is getting printed! Yay!!!");
-            ROS_INFO("\n\n\t normal_particles:\t\t %d \n\t nested_particles in one pool:\t %d \n\t Total nested_particles:\t %d\n\t Grand Total of particles:\t %d\n",
+            ROS_INFO("\n\n\t normal_particles:\t\t %d \n"
+                     "\t\t Avg Weight: %f \n"
+                     "\t\t Covariance: \n"
+                     "\t\t\t %f \t \t \n"
+                     "\t\t\t \t %f \t \n"
+                     "\t\t\t \t \t %f \n\n"
+                     "\t nested_particles in one pool:\t %d \n"
+                     "\t Total nested_particles:\t %d\n"
+                     "\t Grand Total of particles:\t %d\n",
                      pf_->sets[pf_->current_set].sample_count,
+                     pf_->sets[pf_->current_set].avg_weight,
+                     pf_->sets[pf_->current_set].cov.m[0][0],
+                     //pf_->sets[pf_->current_set].cov.m[0][1],
+                     //pf_->sets[pf_->current_set].cov.m[0][2],
+                     //pf_->sets[pf_->current_set].cov.m[1][0],
+                     pf_->sets[pf_->current_set].cov.m[1][1],
+                     //pf_->sets[pf_->current_set].cov.m[1][2],
+                     //pf_->sets[pf_->current_set].cov.m[2][0],
+                     //pf_->sets[pf_->current_set].cov.m[2][1],
+                     pf_->sets[pf_->current_set].cov.m[2][2],
                      nested_particles_set->sample_count,
                      total_nested_particle_count,
                      pf_->sets[pf_->current_set].sample_count + total_nested_particle_count);
+
+
+
+            /* **** Write to Data Collection File **** */
+
+            // Get elapsed time
+            struct timeval tp;
+            gettimeofday(&tp, NULL);
+            long int current_timestamp = tp.tv_sec * 1000 + tp.tv_usec / 1000; //get current timestamp in milliseconds
+            long int elapsed_time = current_timestamp - start_timestamp;
+
+
+            data_collection_fstream->open(filename_abs.c_str(), std::ios::app);
+
+            if (data_collection_fstream->is_open()) {
+
+                *data_collection_fstream << algo_name << ","
+                                         << robot_start_config_id << ","
+                                         << trajectory_id << ","
+                                         << run_number << ","
+                                         << start_timestamp << ","
+                                         << max_particles_ << ","
+                                         << max_nested_particles_ << ","
+                                         << elapsed_time << ","
+                                         << pf_->sets[pf_->current_set].sample_count << ","
+                                         << pf_->sets[pf_->current_set].avg_weight << ","
+                                         << pf_->sets[pf_->current_set].cov.m[0][0] << ","
+                                         << pf_->sets[pf_->current_set].cov.m[1][1] << ","
+                                         << pf_->sets[pf_->current_set].cov.m[2][2] << ","
+                                         << pf_->sets[pf_->current_set].cov.m[0][0]
+                                            + pf_->sets[pf_->current_set].cov.m[1][1]
+                                            + pf_->sets[pf_->current_set].cov.m[2][2] << ","
+                                         << (ldata.isLandmarkObserved ? 1 : 0 ) << ","
+                                         << ldata.landmark_r << ","
+                                         << nested_particles_set->sample_count << ","
+                                         << total_nested_particle_count << "\n";
+
+
+                data_collection_fstream->close();
+
+            }
+            else{
+                printf("\n ********** Filestream opening ERROR while writing data in laserReceived() !!! ********** \n");
+
+                std::cin.ignore(); //just awaiting a keypress of "Enter" to
+                                   //proceed just to make sure this is read
+                exit(1);
+            }
+
+
+            /* **** End writing to Data Collection File **** */
+
+
+
         }
 
 

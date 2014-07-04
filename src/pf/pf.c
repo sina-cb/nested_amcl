@@ -615,6 +615,8 @@ static void normalize_weights(double total, pf_t* pf){
         }
         // Update running averages of likelihood of samples (Prob Rob p258)
         w_avg /= set->sample_count;
+        set->avg_weight = w_avg;
+
         if(pf->w_slow == 0.0)
             pf->w_slow = w_avg;
         else
