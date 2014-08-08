@@ -62,9 +62,11 @@
 #include "cmvision/Blobs.h"
 #include "cmvision/Blob.h"
 
+#include "gazebo_msgs/GetModelState.h"
 
 #include <fstream>
 #include <iostream>
+
 
 
 #define NEW_UNIFORM_SAMPLING 1
@@ -156,6 +158,7 @@ private:
     int run_number;
 
     /* *** */
+
 
 
 
@@ -291,6 +294,20 @@ private:
     double landmark_loc_x;
     double landmark_loc_y;
 
+    /* Initialize true pose related stuff*/
+
+    ros::ServiceClient true_pose_client;
+    gazebo_msgs::GetModelState true_pose_service;
+
+    pf_vector_t true_pose_normal;
+    pf_vector_t true_pose_nested;
+
+
+    /* *** */
+
+
+
+
     void reconfigureCB(amcl::AMCLConfig &config, uint32_t level);
 };
 
@@ -379,6 +396,9 @@ AmclNode::AmclNode() :
 
     /* ****Data Collection**** */
 
+
+    true_pose_client = nh_.serviceClient<gazebo_msgs::GetModelState>("/gazebo/get_model_state");
+
     std::string home_path = std::string(getenv("HOME"));
 
 
@@ -440,6 +460,7 @@ AmclNode::AmclNode() :
                                  << "max_nested_particles" << ","
                                  << "elapsed_time" << ","
                                  << "current normal particle count" << ","
+                                 << "distance betwn true and estimate" << ","
                                  << "avg weight"<< ","
                                  << "cov.m[0][0]" << ","
                                  << "cov.m[1][1]" << ","
@@ -1261,6 +1282,45 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
         double color_min_angle = COLOR_MAX_ANGLE; //since we need absolute value and the max and min are the same but with opposite signs
 
 
+        /* Collect true pose from gazebo */
+
+        true_pose_service.request.model_name = std::string("Robot1");
+        if (true_pose_client.call(true_pose_service))
+        {
+            true_pose_normal.v[0] = true_pose_service.response.pose.position.x;
+            true_pose_normal.v[1] = true_pose_service.response.pose.position.y;
+            true_pose_normal.v[2] = 0.0;
+            ROS_INFO("\n Normal true pose \n\t x: %f \n\t y: %f \n",
+                     true_pose_service.response.pose.position.x,
+                     true_pose_service.response.pose.position.y);
+        }
+        else
+        {
+          ROS_ERROR("Failed to call service gazebo/get_model_state");
+          //exit(1);
+        }
+
+
+        true_pose_service.request.model_name = std::string("Robot2");
+        if (true_pose_client.call(true_pose_service))
+        {
+            true_pose_nested.v[0] = true_pose_service.response.pose.position.x;
+            true_pose_nested.v[1] = true_pose_service.response.pose.position.y;
+            true_pose_nested.v[2] = 0.0;
+            ROS_INFO("\n Nested true pose \n\t x: %f \n\t y: %f \n",
+                     true_pose_service.response.pose.position.x,
+                     true_pose_service.response.pose.position.y);
+        }
+        else
+        {
+          ROS_ERROR("Failed to call service gazebo/get_model_state");
+          //exit(1);
+        }
+
+        /* *** */
+
+
+
         //ROS_INFO("\n ldata.range_count: %d",ldata.range_count);
 
         // To account for lasers that are mounted upside-down, we determine the
@@ -1547,6 +1607,9 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
             long int current_timestamp = tp.tv_sec * 1000 + tp.tv_usec / 1000; //get current timestamp in milliseconds
             long int elapsed_time = current_timestamp - start_timestamp;
 
+            double difference_in_true_and_estimate_normal = 0.0;
+
+
 
             data_collection_fstream->open(filename_abs.c_str(), std::ios::app);
 
@@ -1561,6 +1624,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
                                          << max_nested_particles_ << ","
                                          << elapsed_time << ","
                                          << pf_->sets[pf_->current_set].sample_count << ","
+
                                          << pf_->sets[pf_->current_set].avg_weight << ","
                                          << pf_->sets[pf_->current_set].cov.m[0][0] << ","
                                          << pf_->sets[pf_->current_set].cov.m[1][1] << ","
