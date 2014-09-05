@@ -142,9 +142,14 @@ private:
     int landmark_types;
     int type_object;
     double landmark_phi;
-    double landmark_r;
+    double landmark_r, other_robot_distance;
+    bool isLandmarkObserved;
+    int nested_particle_count, total_nested_particle_count;
+    double normal_MSE, nested_MSE;
+    double occlusion_proportion;
 
-    double get_landmark_r();
+
+//    double get_landmark_r();
 
     /* Initializing the file into which we'll collect all our data */
     std::ofstream *data_collection_fstream;
@@ -195,6 +200,9 @@ private:
     void applyInitialPose();
 
     double getYaw(tf::Pose& t);
+
+    void log_data(geometry_msgs::PoseWithCovarianceStamped pose_bestEstimate);
+
 
 
 
@@ -347,6 +355,13 @@ AmclNode::AmclNode() :
     //KPM: innitializing some variables
     landmark_phi = 0;
     landmark_r = 0;
+    other_robot_distance = 0.0;
+    isLandmarkObserved = false;
+    nested_particle_count = 0;
+    total_nested_particle_count = 0;
+    normal_MSE = 0.0;
+    nested_MSE = 0.0;
+
 
 
     // Grab params off the param server
@@ -460,7 +475,19 @@ AmclNode::AmclNode() :
                                  << "max_nested_particles" << ","
                                  << "elapsed_time" << ","
                                  << "current normal particle count" << ","
+
+                                 << "True Pose" << ","
+                                 << "Estimated Pose" << ","
                                  << "distance betwn true and estimate" << ","
+                                 << "Particle MSE" << ","
+
+                                 << "Occlusion proportion (0.0-1.0)" << ","
+
+                                 << "True Nested Pose" << ","
+//                                 << "Estimated Nested Pose" << ","
+//                                 << "Distance between nested true and nested estimate" << ","
+                                 << "Nested Particle MSE" << ","
+
                                  << "avg weight"<< ","
                                  << "cov.m[0][0]" << ","
                                  << "cov.m[1][1]" << ","
@@ -1093,6 +1120,14 @@ AmclNode::colorReceived(const cmvision::BlobsConstPtr &Blobs){
     int blob_index = 0;
     int i=0;
 
+    int color_count = 0;
+
+
+    /**Non-Contiguous Assumption**/
+    /*
+      // This is for when we assume that the landmark can have holes in it that correspond to
+      // the places where color is not detected
+
     while( blob_index < (int)Blob_holder.blob_count){
 
         while(i< 640-(int)Blob_holder.blobs[blob_index].right){
@@ -1114,9 +1149,32 @@ AmclNode::colorReceived(const cmvision::BlobsConstPtr &Blobs){
 
     }
 
+    */
+    /****/
+
+
+
+    /**Contiguous Assumption**/
+    // This is for when we assume that landmark is contiguous even
+    // if color is sometimes not detected in between two blobs
+
+    if((int)Blob_holder.blob_count > 0){
+        while (i <= 640-(int)Blob_holder.blobs[0].right){
+            AmclNode::color_angles[i++] = false;
+        }
+        while (i <= 640-(int)Blob_holder.blobs[(int)Blob_holder.blob_count - 1].left){
+            AmclNode::color_angles[i++] = true;
+            color_count++;
+        }
+    }
+    /****/
+
+    // This is true regardless of whether landmark is assumed contiguous or not.
     while(i<= 640){
         AmclNode::color_angles[i++] = false;
     }
+
+    occlusion_proportion = color_count/640.0;
 
     return;
 
@@ -1387,6 +1445,8 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
         double landmark_r_distances[max_beams_];
         bool isMaxRangeIncluded = false;
 
+        other_robot_distance = 0.0;
+        landmark_r = 0.0;
         ldata.isLandmarkObserved = false;
         ldata.landmark_r = 0;
         ldata.landmark_phi = 0;
@@ -1413,7 +1473,9 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
              *
              */
 
-            color_index_floor = (int) floor( ((i*angle_increment)-difference_in_min_angles)/RADIANS_PER_PIXEL);
+            // KPM: I think difference_in_min_angles should actually be added,
+            // since its positive when laser min angle is more than color min angle
+            color_index_floor = (int) floor( ((i*angle_increment)+difference_in_min_angles)/RADIANS_PER_PIXEL);
 
             if( (color_index_floor >= 0) && (color_index_floor <= 639) ){ //checks to see if colour has been detected at all
 
@@ -1451,6 +1513,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
                         qsort(landmark_r_distances, blob_ray_count, sizeof(int) ,compare_int);
 
                         landmark_r = landmark_r_distances[blob_ray_count/2];
+                        other_robot_distance = landmark_r;
 
                         ldata.landmark_r = landmark_r;
                         ldata.landmark_phi = landmark_phi;
@@ -1501,6 +1564,11 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
         pf_sample_set_t* set = pf_->sets + pf_->current_set;
         ROS_DEBUG("Num samples: %d\n", set->sample_count);
 
+        // Temp variables to calculate Normal particle Mean Squared Error
+        double squared_error = 0.0;
+
+
+
         // Publish the resulting cloud
         // TODO: set maximum rate for publishing
         geometry_msgs::PoseArray cloud_msg;
@@ -1514,7 +1582,17 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
                                                set->samples[i].pose.v[1], 0)),
                             cloud_msg.poses[i]);
 
+
+            squared_error = squared_error + ( (set->samples[i].pose.v[0]- true_pose_normal.v[0])
+                                              *(set->samples[i].pose.v[0]- true_pose_normal.v[0])
+                                              +
+                                              (set->samples[i].pose.v[1]- true_pose_normal.v[1])
+                                              *(set->samples[i].pose.v[1]- true_pose_normal.v[1])
+                                              );
+
         }
+
+        normal_MSE = squared_error/set->sample_count ;
 
         particlecloud_pub_.publish(cloud_msg);
 
@@ -1542,7 +1620,8 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
 
             nested_pf_set = pf_get_this_nested_set(pf_, pf_->current_set);
 
-            int total_nested_particle_count = 0;
+            int curr_total_nested_particle_count = 0;
+            double nested_squaredError = 0.0;
 
             for(int i=0; i< upper_particles_set->sample_count ; i++){
 
@@ -1557,7 +1636,15 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
                     tf::poseTFToMsg(tf::Pose(tf::createQuaternionFromYaw(nested_particles_set->samples[j].pose.v[2]),
                                              btVector3(nested_particles_set->samples[j].pose.v[0],
                                                        nested_particles_set->samples[j].pose.v[1], 0)),
-                                    nested_cloud_msg.poses[total_nested_particle_count++]);
+                                    nested_cloud_msg.poses[curr_total_nested_particle_count++]);
+
+
+                    nested_squaredError = nested_squaredError + ( (nested_particles_set->samples[j].pose.v[0]- true_pose_nested.v[0])
+                                                                  *(nested_particles_set->samples[j].pose.v[0]- true_pose_nested.v[0])
+                                                                  +
+                                                                  (nested_particles_set->samples[j].pose.v[1]- true_pose_nested.v[1])
+                                                                  *(nested_particles_set->samples[j].pose.v[1]- true_pose_nested.v[1])
+                                                                  );
 //                    ROS_INFO("upper_lvl_particle: %d | nested_particle: %d ----- nested pose: %0.3f, %0.3f, %0.3f",
 //                             i, j,
 //                             nested_particles_set->samples[j].pose.v[0],
@@ -1565,6 +1652,8 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
 //                             nested_particles_set->samples[j].pose.v[2]);
                 }
             }
+
+            nested_MSE = nested_squaredError / curr_total_nested_particle_count;
 
             nested_particlecloud_pub_.publish(nested_cloud_msg);
 
@@ -1594,13 +1683,20 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
                      //pf_->sets[pf_->current_set].cov.m[2][1],
                      pf_->sets[pf_->current_set].cov.m[2][2],
                      nested_particles_set->sample_count,
-                     total_nested_particle_count,
-                     pf_->sets[pf_->current_set].sample_count + total_nested_particle_count);
+                     curr_total_nested_particle_count,
+                     pf_->sets[pf_->current_set].sample_count + curr_total_nested_particle_count);
 
+
+
+
+            // For Data Collection
+            isLandmarkObserved = ldata.isLandmarkObserved;
+            nested_particle_count = nested_particles_set->sample_count;
+            total_nested_particle_count = curr_total_nested_particle_count;
 
 
             /* **** Write to Data Collection File **** */
-
+/*
             // Get elapsed time
             struct timeval tp;
             gettimeofday(&tp, NULL);
@@ -1624,6 +1720,9 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
                                          << max_nested_particles_ << ","
                                          << elapsed_time << ","
                                          << pf_->sets[pf_->current_set].sample_count << ","
+
+                                         << "[" << true_pose_normal.v[0] << " : " << true_pose_normal.v[1] << " : " << true_pose_normal.v[2] << "],"
+                                         << "[" << true_pose_nested.v[0] << " : " << true_pose_nested.v[1] << " : " << true_pose_nested.v[2] << "],"
 
                                          << pf_->sets[pf_->current_set].avg_weight << ","
                                          << pf_->sets[pf_->current_set].cov.m[0][0] << ","
@@ -1649,7 +1748,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
                 exit(1);
             }
 
-
+*/
             /* **** End writing to Data Collection File **** */
 
 
@@ -1745,6 +1844,9 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
             // Publish amcl's best estimate for current pose
             pose_pub_.publish(p);
             last_published_pose = p;
+
+            // Data Collection method
+            log_data(p);
 
             ROS_DEBUG("New pose: %6.3f %6.3f %6.3f",
                       hyps[max_weight_hyp].pf_pose_mean.v[0],
@@ -1924,3 +2026,78 @@ AmclNode::applyInitialPose()
         initial_pose_hyp_ = NULL;
     }
 }
+
+
+
+/**
+ * Data collection method
+ */
+void
+AmclNode::log_data(geometry_msgs::PoseWithCovarianceStamped pose_bestEstimate){
+
+
+    // Get elapsed time
+    struct timeval tp;
+    gettimeofday(&tp, NULL);
+    long int current_timestamp = tp.tv_sec * 1000 + tp.tv_usec / 1000; //get current timestamp in milliseconds
+    long int elapsed_time = current_timestamp - start_timestamp;
+
+    double difference_in_true_and_estimate_normal = sqrt( (pose_bestEstimate.pose.pose.position.x- true_pose_normal.v[0])
+                                                          *(pose_bestEstimate.pose.pose.position.x- true_pose_normal.v[0])
+                                                          +
+                                                          (pose_bestEstimate.pose.pose.position.y- true_pose_normal.v[1])
+                                                          *(pose_bestEstimate.pose.pose.position.y- true_pose_normal.v[1])
+                                                          );
+
+
+
+    data_collection_fstream->open(filename_abs.c_str(), std::ios::app);
+
+    if (data_collection_fstream->is_open()) {
+
+        *data_collection_fstream << algo_name << ","
+                                 << robot_start_config_id << ","
+                                 << trajectory_id << ","
+                                 << run_number << ","
+                                 << start_timestamp << ","
+                                 << max_particles_ << ","
+                                 << max_nested_particles_ << ","
+                                 << elapsed_time << ","
+                                 << pf_->sets[pf_->current_set].sample_count << ","
+
+                                 << "[" << true_pose_normal.v[0] << " : " << true_pose_normal.v[1] << " : " << true_pose_normal.v[2] << "],"
+                                 << "[" << pose_bestEstimate.pose.pose.position.x << " : " << pose_bestEstimate.pose.pose.position.y << " : " << "0.0" << "],"
+                                 << difference_in_true_and_estimate_normal << ","
+                                 << normal_MSE << ","
+
+                                 << occlusion_proportion << ","
+
+                                 << "[" << true_pose_nested.v[0] << " : " << true_pose_nested.v[1] << " : " << true_pose_nested.v[2] << "],"
+                                 << nested_MSE << ","
+
+                                 << pf_->sets[pf_->current_set].avg_weight << ","
+                                 << pf_->sets[pf_->current_set].cov.m[0][0] << ","
+                                 << pf_->sets[pf_->current_set].cov.m[1][1] << ","
+                                 << pf_->sets[pf_->current_set].cov.m[2][2] << ","
+                                 << pf_->sets[pf_->current_set].cov.m[0][0]
+                                    + pf_->sets[pf_->current_set].cov.m[1][1]
+                                    + pf_->sets[pf_->current_set].cov.m[2][2] << ","
+                                 << (isLandmarkObserved ? 1 : 0 ) << ","
+                                 << other_robot_distance << ","
+                                 << nested_particle_count << ","
+                                 << total_nested_particle_count << "\n";
+
+
+        data_collection_fstream->close();
+
+    }
+    else{
+        printf("\n ********** Filestream opening ERROR while writing data in laserReceived() !!! ********** \n");
+
+        std::cin.ignore(); //just awaiting a keypress of "Enter" to
+        //proceed just to make sure this is read
+        exit(1);
+    }
+
+}
+
