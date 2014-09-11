@@ -47,6 +47,7 @@
 #include "geometry_msgs/Pose.h"
 #include "nav_msgs/GetMap.h"
 #include "std_srvs/Empty.h"
+#include "std_msgs/String.h"
 
 // For transform support
 #include "tf/transform_broadcaster.h"
@@ -145,7 +146,8 @@ private:
     double landmark_r, other_robot_distance;
     bool isLandmarkObserved;
     int nested_particle_count, total_nested_particle_count;
-    double normal_MSE, nested_MSE;
+    double normal_MSE, nested_MSE, normal_RootMSE, nested_RootMSE;
+    int normal_particles_within_1m, nested_particles_within_1m;
     double occlusion_proportion;
 
 
@@ -153,6 +155,7 @@ private:
 
     /* Initializing the file into which we'll collect all our data */
     std::ofstream *data_collection_fstream;
+    std::stringstream headers;
     std::string filename_abs;
 
     std::string file_path_from_home;
@@ -271,6 +274,10 @@ private:
 
     ros::Publisher nested_particlecloud_pub_; // For publishing cloud of nested particles
 
+    ros::Publisher npf_data_pub_; // For publishing NPF data
+    ros::Publisher data_fname_pub_;
+    ros::Publisher data_headers_pub_;
+
     ros::ServiceServer global_loc_srv_;
     ros::Subscriber initial_pose_sub_old_;
     ros::Subscriber map_sub_;
@@ -361,8 +368,10 @@ AmclNode::AmclNode() :
     total_nested_particle_count = 0;
     normal_MSE = 0.0;
     nested_MSE = 0.0;
-
-
+    normal_RootMSE = 0.0;
+    nested_RootMSE = 0.0;
+    normal_particles_within_1m = 0;
+    nested_particles_within_1m = 0;
 
     // Grab params off the param server
     private_nh_.param("use_map_topic", use_map_topic_, false);
@@ -453,11 +462,53 @@ AmclNode::AmclNode() :
 
     file_name_strstream >> file_name;
 
+    filename_abs = home_path + file_path_from_home + "/" + file_name + ".txt";
+
+
+
+    headers << "algo_name" << ","
+            << "robot_start_config_id" << ","
+            << "trajectory_id" << ","
+            << "run_number" << ","
+            << "start_timestamp" << ","
+            << "max_particles" << ","
+            << "max_nested_particles" << ","
+            << "elapsed_time" << ","
+            << "current normal particle count" << ","
+
+            << "True Pose" << ","
+            << "Estimated Pose" << ","
+            << "distance betwn true and estimate" << ","
+            << "Particle MSE" << ","
+            << "Particle RMS Error" << ","
+            << "Normal particles within 1m of true pose" << ","
+
+            << "Occlusion proportion (0.0-1.0)" << ","
+
+            << "True Nested Pose" << ","
+//                                 << "Estimated Nested Pose" << ","
+//                                 << "Distance between nested true and nested estimate" << ","
+            << "Nested Particle MSE" << ","
+            << "Nested Particle RMS Error" << ","
+            << "Nested particles within 1m of true nested pose" << ","
+
+            << "avg weight"<< ","
+            << "cov.m[0][0]" << ","
+            << "cov.m[1][1]" << ","
+            << "cov.m[2][2]" << ","
+            << "covariance sum" << ","
+            << "other robot observed" << ","
+            << "other robot distance" << ","
+            << "current nested_particle count" << ","
+            << "total_nested_particle_count";
+
+
+
+
 
     data_collection_fstream = new std::ofstream;
 
-    filename_abs = home_path + file_path_from_home + "/" + file_name + ".txt";
-
+/*
     data_collection_fstream->open(filename_abs.c_str());
 
     if (data_collection_fstream->is_open()) {
@@ -466,37 +517,7 @@ AmclNode::AmclNode() :
                "\t Filename: %s \n\n",
                file_path_from_home.c_str(), file_name.c_str());
 
-        *data_collection_fstream << "algo_name" << ","
-                                 << "robot_start_config_id" << ","
-                                 << "trajectory_id" << ","
-                                 << "run_number" << ","
-                                 << "start_timestamp" << ","
-                                 << "max_particles" << ","
-                                 << "max_nested_particles" << ","
-                                 << "elapsed_time" << ","
-                                 << "current normal particle count" << ","
-
-                                 << "True Pose" << ","
-                                 << "Estimated Pose" << ","
-                                 << "distance betwn true and estimate" << ","
-                                 << "Particle MSE" << ","
-
-                                 << "Occlusion proportion (0.0-1.0)" << ","
-
-                                 << "True Nested Pose" << ","
-//                                 << "Estimated Nested Pose" << ","
-//                                 << "Distance between nested true and nested estimate" << ","
-                                 << "Nested Particle MSE" << ","
-
-                                 << "avg weight"<< ","
-                                 << "cov.m[0][0]" << ","
-                                 << "cov.m[1][1]" << ","
-                                 << "cov.m[2][2]" << ","
-                                 << "covariance sum" << ","
-                                 << "other robot observed" << ","
-                                 << "other robot distance" << ","
-                                 << "current nested_particle count" << ","
-                                 << "total_nested_particle_count" << "\n";
+        *data_collection_fstream << headers << "\n";
 
         data_collection_fstream->close();
 
@@ -509,7 +530,7 @@ AmclNode::AmclNode() :
         exit(1);
     }
 
-
+*/
 
 
     /* **** End of Data collection related stuff **** */
@@ -575,6 +596,10 @@ AmclNode::AmclNode() :
     pose_pub_ = nh_.advertise<geometry_msgs::PoseWithCovarianceStamped>("amcl_pose", 2);
     particlecloud_pub_ = nh_.advertise<geometry_msgs::PoseArray>("particlecloud", 2);
     nested_particlecloud_pub_ = nh_.advertise<geometry_msgs::PoseArray>("nested_particlecloud", 2);
+
+    npf_data_pub_ = nh_.advertise<std_msgs::String>("nested_amcl_data", 2);
+    data_fname_pub_ = nh_.advertise<std_msgs::String>("data_file_name", 2);
+    data_headers_pub_ = nh_.advertise<std_msgs::String>("data_headers", 2);
 
     global_loc_srv_ = nh_.advertiseService("global_localization",
                                            &AmclNode::globalLocalizationCallback,
@@ -1034,8 +1059,8 @@ AmclNode::dualMCL_PoseGenerator(void* arg, double landmark_r, double landmark_ph
     double landmark_x = MAP_WXGX(map, landmark_x_param); //222
     double landmark_y = MAP_WYGY(map, map->size_y - landmark_y_param); // 480-195
 
-    ROS_INFO("landmark_loc_x: %f = landmark_x: %f", landmark_x_param, landmark_x);
-    ROS_INFO("landmark_loc_y: %f = landmark_y: %f \n", landmark_y_param, landmark_y);
+    ROS_DEBUG("landmark_loc_x: %f = landmark_x: %f", landmark_x_param, landmark_x);
+    ROS_DEBUG("landmark_loc_y: %f = landmark_y: %f \n", landmark_y_param, landmark_y);
 
 
     if (landmark_r <= 0){
@@ -1043,7 +1068,7 @@ AmclNode::dualMCL_PoseGenerator(void* arg, double landmark_r, double landmark_ph
         //newPose.v[0] = map->size_x;
         //newPose.v[1] = map->size_y;
         //newPose.v[2] = 0;
-        ROS_INFO("Random Pose_1: %f, %f, %f",newPose.v[0],newPose.v[1],newPose.v[2]);
+        ROS_DEBUG("Random Pose_1: %f, %f, %f",newPose.v[0],newPose.v[1],newPose.v[2]);
         return newPose;
     }
 
@@ -1052,7 +1077,7 @@ AmclNode::dualMCL_PoseGenerator(void* arg, double landmark_r, double landmark_ph
         //newPose.v[0] = map->size_x;
         //newPose.v[1] = map->size_y;
         //newPose.v[2] = 0;
-        ROS_INFO("Random Pose_2: %f, %f, %f",newPose.v[0],newPose.v[1],newPose.v[2]);
+        ROS_DEBUG("Random Pose_2: %f, %f, %f",newPose.v[0],newPose.v[1],newPose.v[2]);
         return newPose;
     }
 
@@ -1348,7 +1373,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
             true_pose_normal.v[0] = true_pose_service.response.pose.position.x;
             true_pose_normal.v[1] = true_pose_service.response.pose.position.y;
             true_pose_normal.v[2] = 0.0;
-            ROS_INFO("\n Normal true pose \n\t x: %f \n\t y: %f \n",
+            ROS_DEBUG("\n Normal true pose \n\t x: %f \n\t y: %f \n",
                      true_pose_service.response.pose.position.x,
                      true_pose_service.response.pose.position.y);
         }
@@ -1365,7 +1390,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
             true_pose_nested.v[0] = true_pose_service.response.pose.position.x;
             true_pose_nested.v[1] = true_pose_service.response.pose.position.y;
             true_pose_nested.v[2] = 0.0;
-            ROS_INFO("\n Nested true pose \n\t x: %f \n\t y: %f \n",
+            ROS_DEBUG("\n Nested true pose \n\t x: %f \n\t y: %f \n",
                      true_pose_service.response.pose.position.x,
                      true_pose_service.response.pose.position.y);
         }
@@ -1582,17 +1607,21 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
                                                set->samples[i].pose.v[1], 0)),
                             cloud_msg.poses[i]);
 
+            double current_SE = ( (set->samples[i].pose.v[0]- true_pose_normal.v[0])
+                                   *(set->samples[i].pose.v[0]- true_pose_normal.v[0])
+                                   +
+                                   (set->samples[i].pose.v[1]- true_pose_normal.v[1])
+                                   *(set->samples[i].pose.v[1]- true_pose_normal.v[1])
+                                   );
 
-            squared_error = squared_error + ( (set->samples[i].pose.v[0]- true_pose_normal.v[0])
-                                              *(set->samples[i].pose.v[0]- true_pose_normal.v[0])
-                                              +
-                                              (set->samples[i].pose.v[1]- true_pose_normal.v[1])
-                                              *(set->samples[i].pose.v[1]- true_pose_normal.v[1])
-                                              );
+            squared_error = squared_error + current_SE;
 
+            if( sqrt(current_SE) <= 1.0 )
+                normal_particles_within_1m++;
         }
 
         normal_MSE = squared_error/set->sample_count ;
+        normal_RootMSE = sqrt(normal_MSE);
 
         particlecloud_pub_.publish(cloud_msg);
 
@@ -1639,21 +1668,31 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
                                     nested_cloud_msg.poses[curr_total_nested_particle_count++]);
 
 
-                    nested_squaredError = nested_squaredError + ( (nested_particles_set->samples[j].pose.v[0]- true_pose_nested.v[0])
-                                                                  *(nested_particles_set->samples[j].pose.v[0]- true_pose_nested.v[0])
-                                                                  +
-                                                                  (nested_particles_set->samples[j].pose.v[1]- true_pose_nested.v[1])
-                                                                  *(nested_particles_set->samples[j].pose.v[1]- true_pose_nested.v[1])
-                                                                  );
-//                    ROS_INFO("upper_lvl_particle: %d | nested_particle: %d ----- nested pose: %0.3f, %0.3f, %0.3f",
-//                             i, j,
-//                             nested_particles_set->samples[j].pose.v[0],
-//                             nested_particles_set->samples[j].pose.v[1],
-//                             nested_particles_set->samples[j].pose.v[2]);
+                    double current_nested_SE = ( (nested_particles_set->samples[j].pose.v[0]- true_pose_nested.v[0])
+                                                  *(nested_particles_set->samples[j].pose.v[0]- true_pose_nested.v[0])
+                                                  +
+                                                  (nested_particles_set->samples[j].pose.v[1]- true_pose_nested.v[1])
+                                                  *(nested_particles_set->samples[j].pose.v[1]- true_pose_nested.v[1])
+                                                  );
+
+                    nested_squaredError = nested_squaredError + current_nested_SE;
+
+                    if( sqrt(current_nested_SE) <= 1.0 )
+                        nested_particles_within_1m++;
+
+                    /*
+                    ROS_INFO("upper_lvl_particle: %d | nested_particle: %d ----- nested pose: %0.3f, %0.3f, %0.3f",
+                             i, j,
+                             nested_particles_set->samples[j].pose.v[0],
+                             nested_particles_set->samples[j].pose.v[1],
+                             nested_particles_set->samples[j].pose.v[2]);
+                    */
+
                 }
             }
 
             nested_MSE = nested_squaredError / curr_total_nested_particle_count;
+            nested_RootMSE = sqrt(nested_MSE);
 
             nested_particlecloud_pub_.publish(nested_cloud_msg);
 
@@ -1662,7 +1701,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
 
 
             //printf(" This is getting printed! Yay!!!");
-            ROS_INFO("\n\n\t normal_particles:\t\t %d \n"
+            ROS_DEBUG("\n\n\t normal_particles:\t\t %d \n"
                      "\t\t Avg Weight: %f \n"
                      "\t\t Covariance: \n"
                      "\t\t\t %f \t \t \n"
@@ -2051,6 +2090,63 @@ AmclNode::log_data(geometry_msgs::PoseWithCovarianceStamped pose_bestEstimate){
 
 
 
+    std::stringstream data_stream;
+    std_msgs::String data_msg;
+
+    std_msgs::String filename_msg;
+    std_msgs::String headers_msg;
+
+    filename_msg.data = filename_abs;
+    headers_msg.data = headers.str();
+
+    data_fname_pub_.publish(filename_msg);
+    data_headers_pub_.publish(headers_msg);
+
+
+    data_stream << algo_name << ","
+                << robot_start_config_id << ","
+                << trajectory_id << ","
+                << run_number << ","
+                << start_timestamp << ","
+                << max_particles_ << ","
+                << max_nested_particles_ << ","
+                << elapsed_time << ","
+                << pf_->sets[pf_->current_set].sample_count << ","
+
+                << "[" << true_pose_normal.v[0] << " : " << true_pose_normal.v[1] << " : " << true_pose_normal.v[2] << "],"
+                << "[" << pose_bestEstimate.pose.pose.position.x << " : " << pose_bestEstimate.pose.pose.position.y << " : " << "0.0" << "],"
+                << difference_in_true_and_estimate_normal << ","
+                << normal_MSE << ","
+                << normal_RootMSE << ","
+                << normal_particles_within_1m << ","
+
+                << occlusion_proportion << ","
+
+                << "[" << true_pose_nested.v[0] << " : " << true_pose_nested.v[1] << " : " << true_pose_nested.v[2] << "],"
+                << nested_MSE << ","
+                << nested_RootMSE << ","
+                << nested_particles_within_1m << ","
+
+                << pf_->sets[pf_->current_set].avg_weight << ","
+                << pf_->sets[pf_->current_set].cov.m[0][0] << ","
+                << pf_->sets[pf_->current_set].cov.m[1][1] << ","
+                << pf_->sets[pf_->current_set].cov.m[2][2] << ","
+                << pf_->sets[pf_->current_set].cov.m[0][0]
+                   + pf_->sets[pf_->current_set].cov.m[1][1]
+                   + pf_->sets[pf_->current_set].cov.m[2][2] << ","
+                << (isLandmarkObserved ? 1 : 0 ) << ","
+                << other_robot_distance << ","
+                << nested_particle_count << ","
+                << total_nested_particle_count;
+
+
+    data_msg.data = data_stream.str();
+
+    ROS_INFO("nested_amcl sent: ## %s ##", data_msg.data.c_str());
+    npf_data_pub_.publish(data_msg);
+
+
+    /*
     data_collection_fstream->open(filename_abs.c_str(), std::ios::app);
 
     if (data_collection_fstream->is_open()) {
@@ -2098,6 +2194,7 @@ AmclNode::log_data(geometry_msgs::PoseWithCovarianceStamped pose_bestEstimate){
         //proceed just to make sure this is read
         exit(1);
     }
+    */
 
 }
 
