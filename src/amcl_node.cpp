@@ -508,30 +508,6 @@ AmclNode::AmclNode() :
 
     data_collection_fstream = new std::ofstream;
 
-/*
-    data_collection_fstream->open(filename_abs.c_str());
-
-    if (data_collection_fstream->is_open()) {
-        printf("-----Filestream opened successfully-----\n"
-               "\t Folder  : %s \n"
-               "\t Filename: %s \n\n",
-               file_path_from_home.c_str(), file_name.c_str());
-
-        *data_collection_fstream << headers << "\n";
-
-        data_collection_fstream->close();
-
-    }
-    else{
-        printf("\n ********** Filestream opening ERROR!!! ********** \n");
-
-        std::cin.ignore(); //just awaiting a keypress of "Enter" to
-                           //proceed just to make sure this is read
-        exit(1);
-    }
-
-*/
-
 
     /* **** End of Data collection related stuff **** */
 
@@ -1701,7 +1677,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
 
 
             //printf(" This is getting printed! Yay!!!");
-            ROS_DEBUG("\n\n\t normal_particles:\t\t %d \n"
+            ROS_INFO("\n\n\t normal_particles:\t\t %d \n"
                      "\t\t Avg Weight: %f \n"
                      "\t\t Covariance: \n"
                      "\t\t\t %f \t \t \n"
@@ -1735,59 +1711,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
 
 
             /* **** Write to Data Collection File **** */
-/*
-            // Get elapsed time
-            struct timeval tp;
-            gettimeofday(&tp, NULL);
-            long int current_timestamp = tp.tv_sec * 1000 + tp.tv_usec / 1000; //get current timestamp in milliseconds
-            long int elapsed_time = current_timestamp - start_timestamp;
 
-            double difference_in_true_and_estimate_normal = 0.0;
-
-
-
-            data_collection_fstream->open(filename_abs.c_str(), std::ios::app);
-
-            if (data_collection_fstream->is_open()) {
-
-                *data_collection_fstream << algo_name << ","
-                                         << robot_start_config_id << ","
-                                         << trajectory_id << ","
-                                         << run_number << ","
-                                         << start_timestamp << ","
-                                         << max_particles_ << ","
-                                         << max_nested_particles_ << ","
-                                         << elapsed_time << ","
-                                         << pf_->sets[pf_->current_set].sample_count << ","
-
-                                         << "[" << true_pose_normal.v[0] << " : " << true_pose_normal.v[1] << " : " << true_pose_normal.v[2] << "],"
-                                         << "[" << true_pose_nested.v[0] << " : " << true_pose_nested.v[1] << " : " << true_pose_nested.v[2] << "],"
-
-                                         << pf_->sets[pf_->current_set].avg_weight << ","
-                                         << pf_->sets[pf_->current_set].cov.m[0][0] << ","
-                                         << pf_->sets[pf_->current_set].cov.m[1][1] << ","
-                                         << pf_->sets[pf_->current_set].cov.m[2][2] << ","
-                                         << pf_->sets[pf_->current_set].cov.m[0][0]
-                                            + pf_->sets[pf_->current_set].cov.m[1][1]
-                                            + pf_->sets[pf_->current_set].cov.m[2][2] << ","
-                                         << (ldata.isLandmarkObserved ? 1 : 0 ) << ","
-                                         << ldata.landmark_r << ","
-                                         << nested_particles_set->sample_count << ","
-                                         << total_nested_particle_count << "\n";
-
-
-                data_collection_fstream->close();
-
-            }
-            else{
-                printf("\n ********** Filestream opening ERROR while writing data in laserReceived() !!! ********** \n");
-
-                std::cin.ignore(); //just awaiting a keypress of "Enter" to
-                                   //proceed just to make sure this is read
-                exit(1);
-            }
-
-*/
             /* **** End writing to Data Collection File **** */
 
 
@@ -2142,59 +2066,9 @@ AmclNode::log_data(geometry_msgs::PoseWithCovarianceStamped pose_bestEstimate){
 
     data_msg.data = data_stream.str();
 
-    ROS_INFO("nested_amcl sent: ## %s ##", data_msg.data.c_str());
+    ROS_DEBUG("nested_amcl sent: ## %s ##", data_msg.data.c_str());
     npf_data_pub_.publish(data_msg);
 
-
-    /*
-    data_collection_fstream->open(filename_abs.c_str(), std::ios::app);
-
-    if (data_collection_fstream->is_open()) {
-
-        *data_collection_fstream << algo_name << ","
-                                 << robot_start_config_id << ","
-                                 << trajectory_id << ","
-                                 << run_number << ","
-                                 << start_timestamp << ","
-                                 << max_particles_ << ","
-                                 << max_nested_particles_ << ","
-                                 << elapsed_time << ","
-                                 << pf_->sets[pf_->current_set].sample_count << ","
-
-                                 << "[" << true_pose_normal.v[0] << " : " << true_pose_normal.v[1] << " : " << true_pose_normal.v[2] << "],"
-                                 << "[" << pose_bestEstimate.pose.pose.position.x << " : " << pose_bestEstimate.pose.pose.position.y << " : " << "0.0" << "],"
-                                 << difference_in_true_and_estimate_normal << ","
-                                 << normal_MSE << ","
-
-                                 << occlusion_proportion << ","
-
-                                 << "[" << true_pose_nested.v[0] << " : " << true_pose_nested.v[1] << " : " << true_pose_nested.v[2] << "],"
-                                 << nested_MSE << ","
-
-                                 << pf_->sets[pf_->current_set].avg_weight << ","
-                                 << pf_->sets[pf_->current_set].cov.m[0][0] << ","
-                                 << pf_->sets[pf_->current_set].cov.m[1][1] << ","
-                                 << pf_->sets[pf_->current_set].cov.m[2][2] << ","
-                                 << pf_->sets[pf_->current_set].cov.m[0][0]
-                                    + pf_->sets[pf_->current_set].cov.m[1][1]
-                                    + pf_->sets[pf_->current_set].cov.m[2][2] << ","
-                                 << (isLandmarkObserved ? 1 : 0 ) << ","
-                                 << other_robot_distance << ","
-                                 << nested_particle_count << ","
-                                 << total_nested_particle_count << "\n";
-
-
-        data_collection_fstream->close();
-
-    }
-    else{
-        printf("\n ********** Filestream opening ERROR while writing data in laserReceived() !!! ********** \n");
-
-        std::cin.ignore(); //just awaiting a keypress of "Enter" to
-        //proceed just to make sure this is read
-        exit(1);
-    }
-    */
 
 }
 
