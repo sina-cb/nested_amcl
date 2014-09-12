@@ -351,11 +351,8 @@ void pf_init(pf_t *pf, pf_vector_t mean, pf_matrix_t cov, map_t* map)
 
     // Create the kd tree for adaptive sampling
     pf_kdtree_clear(set->kdtree);
-
     set->sample_count = pf->max_samples;
-
     pdf = pf_pdf_gaussian_alloc(mean, cov);
-
 
     // Compute the new sample poses
     for (i = 0; i < set->sample_count; i++)
@@ -364,45 +361,29 @@ void pf_init(pf_t *pf, pf_vector_t mean, pf_matrix_t cov, map_t* map)
         sample->weight = 1.0 / pf->max_samples;
 
         // Switching back to original gaussian initial distribution for non-nested particles
-
         if(pf->isNested == 0){
-
             //This was original gaussian sampling for initialization
 
-
             int sample_x = 0, sample_y = 0;
-
 
             do{ // keep getting new poses until we get a valid pose in a free cell
 
                 sample->pose = pf_pdf_gaussian_sample(pdf);
 
-
                 sample_x = MAP_GXWX(map, sample->pose.v[0]);
-
                 sample_y = MAP_GYWY(map, sample->pose.v[1]);
 
-
             }while( ( !MAP_VALID(map, sample_x, sample_y)
-
                   || (map->cells[MAP_INDEX(map, sample_x, sample_y)].occ_state > -1) ));
-
-
         }
-
 
         else{
-
             //KPM: using uniform particle generation for initialization
-
             sample->pose =(pf->random_pose_fn)(map);
-
         }
-
 
         // no covariance ...directly initialize all particles to the exact pose specified by user (or initial pose)
         //sample->pose = mean;
-
 
 
         // Add sample to histogram
@@ -410,7 +391,6 @@ void pf_init(pf_t *pf, pf_vector_t mean, pf_matrix_t cov, map_t* map)
     }
 
     pf->w_slow = pf->w_fast = 0.0;
-
     pf_pdf_gaussian_free(pdf);
 
     // Re-compute cluster statistics
@@ -427,7 +407,6 @@ void pf_init(pf_t *pf, pf_vector_t mean, pf_matrix_t cov, map_t* map)
             pf_init(nested_pf, mean, cov, map);
         }
     }
-
 
     return;
 }

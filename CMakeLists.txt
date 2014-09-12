@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 2.4.6)
 include($ENV{ROS_ROOT}/core/rosbuild/rosbuild.cmake)
-set(ROS_BUILD_TYPE Debug)
+set(ROS_BUILD_TYPE RelWithDebInfo)
 rosbuild_init()
 
 # add dynamic reconfigure api
@@ -8,10 +8,10 @@ rosbuild_find_ros_package(dynamic_reconfigure)
 include(${dynamic_reconfigure_PACKAGE_PATH}/cmake/cfgbuild.cmake)
 gencfg()
 
-rosbuild_add_library(nested_amcl_pf 
-                    src/pf/pf.c 
-                    src/pf/pf_kdtree.c 
-                    src/pf/pf_pdf.c 
+rosbuild_add_library(nested_amcl_pf
+                    src/pf/pf.c
+                    src/pf/pf_kdtree.c
+                    src/pf/pf_pdf.c
                     src/pf/pf_vector.c
                     src/pf/eig3.c
                     src/pf/pf_draw.c)
