@@ -102,10 +102,10 @@ class AMCLLaser : public AMCLSensor
 
   // Determine the probability for the given pose
   private: static double BeamModel_AW(AMCLLaserData *data,
-                                   pf_sample_set_t* set, struct _pf_t * nested_pf_set);
+                                      pf_sample_set_t* set, struct _pf_t * nested_pf_set);
   // Determine the probability for the given pose
   private: static double LikelihoodFieldModel_AW(AMCLLaserData *data,
-                                              pf_sample_set_t* set, struct _pf_t * nested_pf_set);
+                                                 pf_sample_set_t* set, struct _pf_t * nested_pf_set);
 
 
 

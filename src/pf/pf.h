@@ -137,6 +137,8 @@ typedef struct _pf_sample_set_t
     pf_vector_t mean;
     pf_matrix_t cov;
 
+    double avg_weight;
+
 } pf_sample_set_t;
 
 

@@ -22,10 +22,11 @@
   <depend package="nav_msgs" />
   <depend package="std_srvs" />
   <depend package="dynamic_reconfigure" />
-  
+  <depend package="gazebo" />
+
   <!-- Added by KPM to accomodate color detection -->
   <depend package="cmvision" />
-  
+
   <!-- For tests -->
   <depend package="map_server"/>
   <depend package="rostest"/>

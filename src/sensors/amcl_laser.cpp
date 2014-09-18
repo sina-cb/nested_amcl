@@ -272,9 +272,10 @@ double AMCLLaser::LikelihoodFieldModel(AMCLLaserData *data, pf_sample_set_t* set
             mi = MAP_GXWX(self->map, hit.v[0]);
             mj = MAP_GYWY(self->map, hit.v[1]);
 
+            // KPM: Switching back to only giving invalid locations max_occ_distance
             // Part 1: Get distance from the hit to closest obstacle.
             // Off-map penalized as max distance
-            if( ( !MAP_VALID(self->map, mi, mj) || (self->map->cells[MAP_INDEX(self->map,mi,mj)].occ_state > -1) )){
+            if( ( !MAP_VALID(self->map, mi, mj) ) /*|| (self->map->cells[MAP_INDEX(self->map,mi,mj)].occ_state > -1) ) */){
                 z = self->map->max_occ_dist;
                 color_z = self->color_map->max_occ_dist;
             }
@@ -442,6 +443,8 @@ double AMCLLaser::NestedBeamModel(pf_sample_t *upper_sample, AMCLLaserData *data
 
                 if(fabs(sample_bearing) > (28.5 * M_PI/180) ){ // Definitely outside the visible sector
                     //z = self->map->max_occ_dist/2;
+                    // Will give the sample a higher weight since its outside our field of view,
+                    // as is expected when there is no sighting of the other robot
                     z = 0.0001;
                 }
 
@@ -474,15 +477,19 @@ double AMCLLaser::NestedBeamModel(pf_sample_t *upper_sample, AMCLLaserData *data
                         double range2 = data->ranges[i-step][0];
 
                         if( (range1 < sample_range) || (range2 < sample_range)){
-                            z = 0.0; // exact match in cells ...so max probability
+                            // same case...it's outside visible field..so higher probability when other robot not seen
+                            z = 0.0001;
                         }
                         else{
+                            // It's inside the field of view when we should not be able to see it
+                            // Penalizing with low probability
                             z = self->map->max_occ_dist;
-                            // z = -1; // this would hard code negative weighted samples to zero probability
                         }
                     }
                     else{
-                        z = 0.0; // exact match in cells ...so max probability
+                        // exact match in cells ...can happen only when color detection failure occurs
+                        // Penalizing with low priority
+                        z = self->map->max_occ_dist;
                     }
                 }
 
@@ -619,6 +626,7 @@ double AMCLLaser::BeamModel_AW(AMCLLaserData *data, pf_sample_set_t* set, struct
     return(total_weight);
 }
 
+
 double AMCLLaser::LikelihoodFieldModel_AW(AMCLLaserData *data, pf_sample_set_t* set, struct _pf_t * nested_pf_set)
 {
     AMCLLaser *self;
@@ -639,7 +647,6 @@ double AMCLLaser::LikelihoodFieldModel_AW(AMCLLaserData *data, pf_sample_set_t* 
     double advanced_weight;
 
 
-
     self = (AMCLLaser*) data->sensor;
 
     total_weight = 0.0;
@@ -652,7 +659,6 @@ double AMCLLaser::LikelihoodFieldModel_AW(AMCLLaserData *data, pf_sample_set_t* 
         // Get the nested sample pool corresponding to the current particle
         pf_sample = nested_pf_set + j;
         nested_sample_set = pf_sample->sets + pf_sample->current_set;
-
 
         pose = sample->pose;
 
@@ -690,7 +696,8 @@ double AMCLLaser::LikelihoodFieldModel_AW(AMCLLaserData *data, pf_sample_set_t* 
 
             // Part 1: Get distance from the hit to closest obstacle.
             // Off-map penalized as max distance
-            if( ( !MAP_VALID(self->map, mi, mj) || (self->map->cells[MAP_INDEX(self->map,mi,mj)].occ_state > -1) )){
+            if( ( !MAP_VALID(self->map, mi, mj) )
+                    /*|| (self->map->cells[MAP_INDEX(self->map,mi,mj)].occ_state > -1) )*/ ){
                 z = self->map->max_occ_dist;
                 color_z = self->color_map->max_occ_dist;
             }
@@ -703,12 +710,54 @@ double AMCLLaser::LikelihoodFieldModel_AW(AMCLLaserData *data, pf_sample_set_t* 
 
                 // Gaussian model
                 // NOTE: this should have a normalization of 1/(sqrt(2pi)*sigma)
+                /*
                 if(LASER_WEIGHTAGE == 1){
                     pz = pz + (self->z_hit * exp(-(z * z) / z_hit_denom));
                 }
                 if(COLOR_WEIGHTAGE == 1){
                     pz *= (self->z_hit * exp(-(color_z * color_z) / z_hit_denom));
                 }
+                */
+
+                //****** Advanced Weighting steps ******
+
+                for(int nested_sample_counter = 0; nested_sample_counter < nested_sample_set->sample_count; nested_sample_counter++){
+
+                    double current_weight, distance;
+
+                    current_weight = 0.0;
+                    distance = 0.0;
+
+                    nested_sample = nested_sample_set->samples + nested_sample_counter;
+
+                    // Convert to map grid coords.
+                    int sample_x, sample_y;
+                    sample_x = MAP_GXWX(self->map, nested_sample->pose.v[0]);
+                    sample_y = MAP_GYWY(self->map, nested_sample->pose.v[1]);
+
+                    distance = sqrt((sample_x-mi)*(sample_x-mi) + (sample_y-mj)*(sample_y-mj)) * self->map->scale;
+
+                    if(distance > self->map->max_occ_dist){  // Mapping any distance greater than max to max
+                        distance = self->map->max_occ_dist;
+                    }
+
+                    current_weight = (self->z_hit * exp(-(distance * distance) / z_hit_denom));
+
+                    current_weight = current_weight * nested_sample->non_normalized_weight; // P(hit|robot_present)*P(robot_present)
+
+                    if(current_weight > advanced_weight)
+                        advanced_weight = current_weight;
+
+                }
+
+//                assert(advanced_weight <= 1.0);
+//                assert(advanced_weight >= 0.0);
+
+                // here we have an ad-hoc weighting scheme for combining beam probs due to
+                // works well, though...
+                pz = pz + advanced_weight;
+
+                //****** End of Advanced Weighting steps ******
 
 
                 // Part 2: random measurements
@@ -720,73 +769,22 @@ double AMCLLaser::LikelihoodFieldModel_AW(AMCLLaserData *data, pf_sample_set_t* 
 
                 // Gaussian model
                 // NOTE: this should have a normalization of 1/(sqrt(2pi)*sigma)
-                if(LASER_WEIGHTAGE == 1){
-                    pz = pz + (self->z_hit * exp(-(z * z) / z_hit_denom));
-                }
-                if(COLOR_WEIGHTAGE == 1){
-                    pz *= (1- (self->z_hit * exp(-(color_z * color_z) / z_hit_denom)));
-                }
-
+                pz = pz + (self->z_hit * exp(-(z * z) / z_hit_denom));
 
                 // Part 2: random measurements
                 pz = pz + (self->z_rand * z_rand_mult) *(self->z_rand * z_rand_mult);
             }
 
 
-            //****** Advanced Weighting steps ******
-
-
-
-            for(int nested_sample_counter = 0; nested_sample_counter < nested_sample_set->sample_count; nested_sample_counter++){
-
-                double current_weight, distance;
-
-                current_weight = 0.0;
-                distance = 0.0;
-
-                nested_sample = nested_sample_set->samples + nested_sample_counter;
-
-                // Convert to map grid coords.
-                int sample_x, sample_y;
-                sample_x = MAP_GXWX(self->map, nested_sample->pose.v[0]);
-                sample_y = MAP_GYWY(self->map, nested_sample->pose.v[1]);
-
-                distance = sqrt((sample_x-mi)*(sample_x-mi) + (sample_y-mj)*(sample_y-mj)) * self->map->scale;
-
-                if(distance > self->map->max_occ_dist){  // Mapping any distance greater than max to max
-                    distance = self->map->max_occ_dist;
-                }
-
-                current_weight = current_weight + (self->z_hit * exp(-(distance * distance) / z_hit_denom));
-
-                current_weight = current_weight * nested_sample->non_normalized_weight; // P(hit|robot_present)*P(robot_present)
-
-                if(current_weight > advanced_weight)
-                    advanced_weight = current_weight;
-
-
-            }
-
-            assert(advanced_weight <= 1.0);
-            assert(advanced_weight >= 0.0);
-
-            // here we have an ad-hoc weighting scheme for combining beam probs due to
-            // works well, though...
-            p += advanced_weight*advanced_weight*advanced_weight;
-
-            //****** End of Advanced Weighting steps ******
-
 
 
             // TODO: outlier rejection for short readings
-
             assert(pz <= 1.0);
             assert(pz >= 0.0);
             //      p *= pz;
             // here we have an ad-hoc weighting scheme for combining beam probs
             // works well, though...
             p += pz*pz*pz;
-
 
         }
 
@@ -797,6 +795,3 @@ double AMCLLaser::LikelihoodFieldModel_AW(AMCLLaserData *data, pf_sample_set_t* 
 
     return(total_weight);
 }
-
-
-
