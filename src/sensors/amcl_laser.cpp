@@ -270,9 +270,10 @@ double AMCLLaser::LikelihoodFieldModel(AMCLLaserData *data, pf_sample_set_t* set
             mi = MAP_GXWX(self->map, hit.v[0]);
             mj = MAP_GYWY(self->map, hit.v[1]);
 
+            // KPM: Switching back to only giving invalid locations max_occ_distance
             // Part 1: Get distance from the hit to closest obstacle.
             // Off-map penalized as max distance
-            if( ( !MAP_VALID(self->map, mi, mj) || (self->map->cells[MAP_INDEX(self->map,mi,mj)].occ_state > -1) )){
+            if( ( !MAP_VALID(self->map, mi, mj) ) /*|| (self->map->cells[MAP_INDEX(self->map,mi,mj)].occ_state > -1) ) */){
                 z = self->map->max_occ_dist;
                 color_z = self->color_map->max_occ_dist;
             }
