@@ -448,7 +448,9 @@ double AMCLLaser::NestedBeamModel(pf_sample_t *upper_sample, AMCLLaserData *data
 
 
                 if(fabs(sample_bearing) > (28.5 * M_PI/180) ){ // Definitely outside the visible sector
-                    //z = self->map->max_occ_dist/2;
+                    // Sample is outside the angles of the field of vision.
+                    // This is good since we don't expect to see the sample as the other
+                    // robot has not been sighted anyways. Hence, giving a higher probability.
                     z = 0.0001;
                 }
 
@@ -481,15 +483,20 @@ double AMCLLaser::NestedBeamModel(pf_sample_t *upper_sample, AMCLLaserData *data
                         double range2 = data->ranges[i-step][0];
 
                         if( (range1 < sample_range) || (range2 < sample_range)){
-                            z = 0.0; // exact match in cells ...so max probability
+                            // same case...it's outside visible field..so higher probability when other robot not seen
+                            z = 0.0001;
                         }
                         else{
+                            // It's inside the field of view when we should not be able to see it
+                            // Penalizing with low probability
                             z = self->map->max_occ_dist;
-                            // z = -1; // this would hard code negative weighted samples to zero probability
                         }
                     }
                     else{
-                        z = 0.0; // exact match in cells ...so max probability
+                        // Again...sample is outside the angles of the field of vision
+                        // This is good since we don't expect to see the sample as the other
+                        // robot has not been sighted anyways. Hence, giving a higher probability.
+                        z = 0.0001;
                     }
                 }
 
