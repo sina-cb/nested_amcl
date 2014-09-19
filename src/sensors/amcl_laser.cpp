@@ -363,7 +363,7 @@ double AMCLLaser::NestedBeamModel(pf_sample_t *upper_sample, AMCLLaserData *data
     /** Following a model similar to Likelihood Field when we have a colored blob sighting */
     // Pre-compute a couple of things
     double z_hit_denom = 2 * self->sigma_hit * self->sigma_hit;
-    double z_rand_mult = 1.0/data->range_max;
+    //double z_rand_mult = 1.0/data->range_max;
 
 
 
@@ -411,6 +411,10 @@ double AMCLLaser::NestedBeamModel(pf_sample_t *upper_sample, AMCLLaserData *data
                 // Part 1: Get distance from the hit to sample.
                 z = sqrt((x0-x1)*(x0-x1) + (y0-y1)*(y0-y1)) * self->map->scale;
 
+                if(z > self->map->max_occ_dist){ // Mapping any distance greater than max to max
+                    z = self->map->max_occ_dist;
+                }
+
                 // Gaussian model
                 // NOTE: this should have a normalization of 1/(sqrt(2pi)*sigma)
                 pz = pz + (self->z_hit * exp(-(z * z) / z_hit_denom));
@@ -426,7 +430,9 @@ double AMCLLaser::NestedBeamModel(pf_sample_t *upper_sample, AMCLLaserData *data
 
 
                 if(fabs(sample_bearing) > (28.5 * M_PI/180) ){ // Definitely outside the visible sector
-                    //z = self->map->max_occ_dist/2;
+                    // Sample is outside the angles of the field of vision.
+                    // This is good since we don't expect to see the sample as the other
+                    // robot has not been sighted anyways. Hence, giving a higher probability.
                     z = 0.0001;
                 }
 
@@ -458,12 +464,20 @@ double AMCLLaser::NestedBeamModel(pf_sample_t *upper_sample, AMCLLaserData *data
                         double range1 = data->ranges[i][0];
                         double range2 = data->ranges[i-step][0];
 
-                        if( (range1 < sample_range) || (range2 < sample_range))
+                        if( (range1 < sample_range) || (range2 < sample_range)){
+                            // same case...it's outside visible field..so higher probability when other robot not seen
                             z = 0.0001;
-                        else
-                            z = -1; //self->map->max_occ_dist;
+                        }
+                        else{
+                            // It's inside the field of view when we should not be able to see it
+                            // Penalizing with low probability
+                            z = self->map->max_occ_dist;
+                        }
                     }
                     else{
+                        // Again...sample is outside the angles of the field of vision
+                        // This is good since we don't expect to see the sample as the other
+                        // robot has not been sighted anyways. Hence, giving a higher probability.
                         z = 0.0001;
                     }
                 }
