@@ -435,7 +435,7 @@ double AMCLLaser::NestedBeamModel(pf_sample_t *upper_sample, AMCLLaserData *data
 
                 // Gaussian model
                 // NOTE: this should have a normalization of 1/(sqrt(2pi)*sigma)
-                pz = pz + (self->z_hit * exp(-(z * z) / z_hit_denom));
+                pz = pz + data->color_beams*(self->z_hit * exp(-(z * z) / z_hit_denom));
 
 
             }
