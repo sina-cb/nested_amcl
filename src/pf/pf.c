@@ -543,53 +543,6 @@ void pf_update_nested_sensor(pf_t *pf,
 
     normalize_weights(total, pf);
 
-    /*
-    if (total > 0.0)
-    {
-        // Normalize weights
-        double w_avg=0.0;
-        for (i = 0; i < set->sample_count; i++)
-        {
-            sample = set->samples + i;
-            w_avg += sample->weight;
-            sample->weight /= total;
-        }
-        // Update running averages of likelihood of samples (Prob Rob p258)
-        w_avg /= set->sample_count;
-        if(pf->w_slow == 0.0)
-            pf->w_slow = w_avg;
-        else
-            pf->w_slow += pf->alpha_slow * (w_avg - pf->w_slow);
-        if(pf->w_fast == 0.0)
-            pf->w_fast = w_avg;
-        else
-            pf->w_fast += pf->alpha_fast * (w_avg - pf->w_fast);
-        //printf("w_avg: %e slow: %e fast: %e\n",
-        //w_avg, pf->w_slow, pf->w_fast);
-    }
-    else
-    {
-        //PLAYER_WARN("pdf has zero probability");
-
-        // Handle zero total
-        for (i = 0; i < set->sample_count; i++)
-        {
-            sample = set->samples + i;
-            sample->weight = 1.0 / set->sample_count;
-        }
-    }
-
-    */
-    /*
-    if(pf->nesting_lvl > 0){
-        for(int i=0; i < pf->sets[pf->current_set].sample_count ; i++){
-            pf_t *nested_pf_set, *nested_pf;
-            nested_pf_set = pf_get_this_nested_set(pf, pf->current_set);
-            nested_pf = nested_pf_set + i;
-            pf_update_sensor(nested_pf, (pf_sensor_model_fn_t) NestedBeamModel, data);
-        }
-    }
-*/
 
     if(pf->nesting_lvl > 0){
         int i = 0;

@@ -77,9 +77,9 @@
 
 //KPM: Since Kinect camera has a field of view of 57 degrees
 // This is = (-28.5 * M_PI)/180
-#define COLOR_MIN_ANGLE −0.497419
+#define COLOR_MIN_ANGLE -0.497419
 // This is = (28.5 * M_PI)/180
-#define COLOR_MAX_ANGLE  0.497419
+#define COLOR_MAX_ANGLE 0.497419
 
 //#define MX = 3.7
 //#define MY = 1.0
@@ -154,7 +154,6 @@ private:
 //    double get_landmark_r();
 
     /* Initializing the file into which we'll collect all our data */
-    std::ofstream *data_collection_fstream;
     std::stringstream headers;
     std::string filename_abs;
 
@@ -504,9 +503,6 @@ AmclNode::AmclNode() :
 
 
 
-
-
-    data_collection_fstream = new std::ofstream;
 
 
     /* **** End of Data collection related stuff **** */
@@ -952,8 +948,6 @@ AmclNode::~AmclNode()
     delete initial_pose_sub_;
     delete tfb_;
     delete tf_;
-
-    delete data_collection_fstream;
 
     // TODO: delete everything allocated in constructor
 }
@@ -1451,7 +1445,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
         ldata.isLandmarkObserved = false;
         ldata.landmark_r = 0;
         ldata.landmark_phi = 0;
-
+        ldata.color_beams = 0;
 
         for(int i=0;i<ldata.range_count;i++)
         {
@@ -1483,6 +1477,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
                 if(AmclNode::color_angles[color_index_floor]
                         || AmclNode::color_angles[color_index_floor+1]){
                     ldata.ranges[i][2] = 50;
+                    ldata.color_beams++;
 
                     // Only include one max ranged sensory input
                     // ...reject all other max range readings
@@ -1576,6 +1571,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
         cloud_msg.header.stamp = ros::Time::now();
         cloud_msg.header.frame_id = global_frame_id_;
         cloud_msg.poses.resize(set->sample_count);
+        normal_particles_within_1m = 0;
         for(int i=0;i<set->sample_count;i++)
         {
             tf::poseTFToMsg(tf::Pose(tf::createQuaternionFromYaw(set->samples[i].pose.v[2]),
@@ -1628,6 +1624,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
             int curr_total_nested_particle_count = 0;
             double nested_squaredError = 0.0;
 
+            nested_particles_within_1m = 0;
             for(int i=0; i< upper_particles_set->sample_count ; i++){
 
                 //                nested_pf_set = pf_->nested_pf_sets[i][pf_->current_set];
