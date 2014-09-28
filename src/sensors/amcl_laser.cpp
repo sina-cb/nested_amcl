@@ -362,6 +362,7 @@ double AMCLLaser::NestedBeamModel(pf_sample_t *upper_sample, AMCLLaserData *data
     AMCLLaser *self;
     int i, j, step;
     double z, pz, pz_color;
+    int weighting_multiplier;
     double p;
     //    double map_range;
     double obs_range, obs_bearing, sample_abs_angle, sample_bearing;
@@ -399,6 +400,7 @@ double AMCLLaser::NestedBeamModel(pf_sample_t *upper_sample, AMCLLaserData *data
         p = 1.0;
         pz = 0.0;
         pz_color = 0.0;
+        weighting_multiplier = 1;
 
 
         int x0, y0;
@@ -435,7 +437,9 @@ double AMCLLaser::NestedBeamModel(pf_sample_t *upper_sample, AMCLLaserData *data
 
                 // Gaussian model
                 // NOTE: this should have a normalization of 1/(sqrt(2pi)*sigma)
-                pz = pz + data->color_beams*(self->z_hit * exp(-(z * z) / z_hit_denom));
+                pz = pz + (self->z_hit * exp(-(z * z) / z_hit_denom));
+
+                weighting_multiplier = data->color_beams;
 
 
             }
@@ -539,9 +543,16 @@ double AMCLLaser::NestedBeamModel(pf_sample_t *upper_sample, AMCLLaserData *data
         assert(pz_color >= 0.0);
 
         //      p *= pz;
-        // here we have an ad-hoc weighting scheme for combining beam probs
+        // here we have an ad-hoc weighting scheme for combining beam probs (pz^3)
         // works well, though...
-        p += pz*pz*pz;
+        // Multiplication by color_beams is an approximation:
+
+        // Instead of calculating the pz for each laser beam that hits the other robot,
+        // and then cubing it and adding it to p for each beam...we multiply the cube of pz
+        // calculated for the mean laser beam by the number of beams that hit the other robot.
+        // This is mathematically sound...and should work correctly. This helps speed up processing.
+        // The only foreseeable flaw is perhaps that the noise in observations is kind of removed in the process.
+        p += weighting_multiplier*(pz*pz*pz);
 
         sample->weight *= p;
         total_weight += sample->weight;
