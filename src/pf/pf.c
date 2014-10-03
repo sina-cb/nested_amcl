@@ -384,45 +384,29 @@ void pf_init(pf_t *pf, pf_vector_t mean, pf_matrix_t cov, map_t* map)
         sample->weight = 1.0 / pf->max_samples;
 
         // Switching back to original gaussian initial distribution for non-nested particles
-
         if(pf->isNested == 0){
-
             //This was original gaussian sampling for initialization
-
 
             int sample_x = 0, sample_y = 0;
 
-
             do{ // keep getting new poses until we get a valid pose in a free cell
-
                 sample->pose = pf_pdf_gaussian_sample(pdf);
 
-
                 sample_x = MAP_GXWX(map, sample->pose.v[0]);
-
                 sample_y = MAP_GYWY(map, sample->pose.v[1]);
 
-
             }while( ( !MAP_VALID(map, sample_x, sample_y)
-
                   || (map->cells[MAP_INDEX(map, sample_x, sample_y)].occ_state > -1) ));
 
-
         }
-
 
         else{
-
             //KPM: using uniform particle generation for initialization
-
             sample->pose =(pf->random_pose_fn)(map);
-
         }
-
 
         // no covariance ...directly initialize all particles to the exact pose specified by user (or initial pose)
         //sample->pose = mean;
-
 
 
         // Add sample to histogram

@@ -26,7 +26,7 @@
 
   <!-- Added by KPM to accomodate color detection -->
   <depend package="cmvision" />
-  
+
   <!-- For tests -->
   <depend package="map_server"/>
   <depend package="rostest"/>

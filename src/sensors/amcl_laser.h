@@ -57,6 +57,7 @@ class AMCLLaserData : public AMCLSensorData
     public: double landmark_r;
     public: double landmark_phi;
     public: bool isLandmarkObserved;
+    int color_beams;
 };
 
 

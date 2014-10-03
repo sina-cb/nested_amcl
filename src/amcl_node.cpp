@@ -1445,7 +1445,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
         ldata.isLandmarkObserved = false;
         ldata.landmark_r = 0;
         ldata.landmark_phi = 0;
-
+        ldata.color_beams = 0;
 
         for(int i=0;i<ldata.range_count;i++)
         {
@@ -1477,6 +1477,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
                 if(AmclNode::color_angles[color_index_floor]
                         || AmclNode::color_angles[color_index_floor+1]){
                     ldata.ranges[i][2] = 50;
+                    ldata.color_beams++;
 
                     // Only include one max ranged sensory input
                     // ...reject all other max range readings
@@ -1570,6 +1571,8 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
         cloud_msg.header.stamp = ros::Time::now();
         cloud_msg.header.frame_id = global_frame_id_;
         cloud_msg.poses.resize(set->sample_count);
+
+        normal_particles_within_1m = 0;
         for(int i=0;i<set->sample_count;i++)
         {
             tf::poseTFToMsg(tf::Pose(tf::createQuaternionFromYaw(set->samples[i].pose.v[2]),
@@ -1622,6 +1625,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
             int curr_total_nested_particle_count = 0;
             double nested_squaredError = 0.0;
 
+            nested_particles_within_1m = 0;
             for(int i=0; i< upper_particles_set->sample_count ; i++){
 
                 //                nested_pf_set = pf_->nested_pf_sets[i][pf_->current_set];
