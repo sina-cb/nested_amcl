@@ -370,9 +370,9 @@ void AMCLOdom::getNestedParticlePose(pf_vector_t *odom_pose, pf_vector_t *delta,
 
   double dice = drand48() * 100;
   double nested_delta_trans = 0.0;
-  double fixed_trans = 0.01;
+  double fixed_trans = 0.35;
 
-  if(upper_delta_trans > 0.001){
+  if(upper_delta_trans > 0.1){
       last_delta_trans = upper_delta_trans;
       nested_delta_trans = upper_delta_trans;
   }
@@ -385,7 +385,7 @@ void AMCLOdom::getNestedParticlePose(pf_vector_t *odom_pose, pf_vector_t *delta,
       }
   }
 
-  nested_delta_trans = 0.75 * nested_delta_trans; //reducing to 75% from expected behaviour
+  nested_delta_trans = 0.6 * nested_delta_trans; //reducing to 60% from observed behaviour
 
   double map_range = map_calc_range(this->map, odom_pose->v[0], odom_pose->v[1], odom_pose->v[2], 10);
 
