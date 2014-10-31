@@ -36,7 +36,8 @@
 
 //#include "ros/ros.h"
 
-#define DUAL_MCL 1
+#define DUAL_MCL 0
+#define NESTED_DUAL 1
 
 // Compute the required number of samples, given that there are k bins
 // with samples in them.
@@ -884,7 +885,10 @@ void pf_update_nested_resample(pf_t *pf, double landmark_r, double landmark_phi,
 
         //    if(drand48() < w_diff){
 
-        if( (pf->isNested != 0) && drand48() < 0.05 && (landmark_r > 0)){
+        if( (pf->isNested != 0)
+                && drand48() < 0.05
+                && (landmark_r > 0)
+                && NESTED_DUAL == 1){
             //if( (DUAL_MCL == 1) ){
                 //KPM..this is the original random sampling function
                 //sample_b->pose = (pf->random_pose_fn)(pf->random_pose_data);
