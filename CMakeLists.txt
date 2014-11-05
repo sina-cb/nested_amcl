@@ -29,8 +29,16 @@ rosbuild_add_library(nested_amcl_sensors
                     src/sensors/amcl_laser.cpp)
 target_link_libraries(nested_amcl_sensors nested_amcl_map nested_amcl_pf)
 
+
+# from Fuerte migration diff between navigation-1.6 and 1.8
+rosbuild_add_boost_directories()
+
 rosbuild_add_executable(bin/nested_amcl
                        src/amcl_node.cpp)
+
+# from Fuerte migration diff between navigation-1.6 and 1.8
+rosbuild_link_boost(bin/nested_amcl signals)
+
 
 target_link_libraries(bin/nested_amcl nested_amcl_sensors nested_amcl_map nested_amcl_pf)
 
