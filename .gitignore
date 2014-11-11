@@ -1,6 +1,13 @@
 build/
 bin/
+
+# gedit temp files
 *.*~
+# system generated files
+*.doc
+*.dox
+*.wikidoc
+*.user
 
 # Compiled source #
 ###################

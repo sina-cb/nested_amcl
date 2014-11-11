@@ -1171,7 +1171,6 @@ AmclNode::colorReceived(const cmvision::BlobsConstPtr &Blobs){
 
     occlusion_proportion = color_count/640.0;
 
-
     return;
 
 }

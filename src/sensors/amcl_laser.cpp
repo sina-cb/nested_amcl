@@ -136,16 +136,6 @@ bool AMCLLaser::UpdateSensor(pf_t *pf, AMCLSensorData *data)
             pf_update_nested_sensor(pf, (pf_sensor_AW_model_fn_t) BeamModel_AW, (pf_nested_sensor_model_fn_t) NestedBeamModel, data);
     }
 
-    /*
-    if(pf->nesting_lvl > 0){
-        for(int i=0; i < pf->sets[pf->current_set].sample_count ; i++){
-            pf_t *nested_pf_set, *nested_pf;
-            nested_pf_set = pf_get_this_nested_set(pf, pf->current_set);
-            nested_pf = nested_pf_set + i;
-            pf_update_sensor(nested_pf, (pf_sensor_model_fn_t) NestedBeamModel, data);
-        }
-    }
-*/
     return true;
 }
 
@@ -239,6 +229,8 @@ double AMCLLaser::LikelihoodFieldModel(AMCLLaserData *data, pf_sample_set_t* set
     pf_vector_t pose;
     pf_vector_t hit;
 
+
+
     self = (AMCLLaser*) data->sensor;
 
     total_weight = 0.0;
@@ -280,10 +272,10 @@ double AMCLLaser::LikelihoodFieldModel(AMCLLaserData *data, pf_sample_set_t* set
             mi = MAP_GXWX(self->map, hit.v[0]);
             mj = MAP_GYWY(self->map, hit.v[1]);
 
+            // KPM: Switching back to only giving invalid locations max_occ_distance
             // Part 1: Get distance from the hit to closest obstacle.
             // Off-map penalized as max distance
-            if( ( !MAP_VALID(self->map, mi, mj) )
-                    /*|| (self->map->cells[MAP_INDEX(self->map,mi,mj)].occ_state > -1) )*/ ){
+            if( ( !MAP_VALID(self->map, mi, mj) ) /*|| (self->map->cells[MAP_INDEX(self->map,mi,mj)].occ_state > -1) ) */){
                 z = self->map->max_occ_dist;
                 color_z = self->color_map->max_occ_dist;
             }
@@ -328,8 +320,10 @@ double AMCLLaser::LikelihoodFieldModel(AMCLLaserData *data, pf_sample_set_t* set
 
             //****** Advanced Weighting steps ******
 
+
             //pf_sample_set = pf
             //for(int nested_counter = 0; nested_counter < )
+
 
             //****** End of Advanced Weighting steps ******
 
@@ -400,15 +394,15 @@ double AMCLLaser::NestedBeamModel(pf_sample_t *upper_sample, AMCLLaserData *data
         p = 1.0;
         pz = 0.0;
         pz_color = 0.0;
-        weighting_multiplier = 1;
 
+        weighting_multiplier = 1;
 
         int x0, y0;
         x0 = MAP_GXWX(self->map, pose.v[0]);
         y0 = MAP_GYWY(self->map, pose.v[1]);
 
         if( !MAP_VALID(self->map, x0, y0) || (self->map->cells[MAP_INDEX(self->map,x0,y0)].occ_state > -1) ){
-            z = self->map->max_occ_dist*4;
+            z = self->map->max_occ_dist;
             //color_z = self->color_map->max_occ_dist;
         }
 
@@ -431,18 +425,15 @@ double AMCLLaser::NestedBeamModel(pf_sample_t *upper_sample, AMCLLaserData *data
                 // Part 1: Get distance from the hit to sample.
                 z = sqrt((x0-x1)*(x0-x1) + (y0-y1)*(y0-y1)) * self->map->scale;
 
-                /*
                 if(z > self->map->max_occ_dist){ // Mapping any distance greater than max to max
                     z = self->map->max_occ_dist;
                 }
-                */
 
                 // Gaussian model
                 // NOTE: this should have a normalization of 1/(sqrt(2pi)*sigma)
-                pz = pz + ( /* self->z_hit * */ exp(-(z * z) / z_hit_denom));
+                pz = pz + (self->z_hit * exp(-(z * z) / z_hit_denom));
 
                 weighting_multiplier = data->color_beams;
-
 
             }
 
@@ -515,8 +506,8 @@ double AMCLLaser::NestedBeamModel(pf_sample_t *upper_sample, AMCLLaserData *data
                 // Gaussian model
                 // NOTE: this should have a normalization of 1/(sqrt(2pi)*sigma)
 
-                if(z >0 ){
-                    pz = pz + ( /* self->z_hit * */ exp(-(z * z) / z_hit_denom));
+                if(z >=0 ){
+                    pz = pz + (self->z_hit * exp(-(z * z) / z_hit_denom));
                 }
                 else{
                     pz = 0.0;
@@ -547,14 +538,14 @@ double AMCLLaser::NestedBeamModel(pf_sample_t *upper_sample, AMCLLaserData *data
         //      p *= pz;
         // here we have an ad-hoc weighting scheme for combining beam probs (pz^3)
         // works well, though...
-        // Multiplication by color_beams is an approximation:
 
+        // Multiplication by color_beams is an approximation:
         // Instead of calculating the pz for each laser beam that hits the other robot,
         // and then cubing it and adding it to p for each beam...we multiply the cube of pz
         // calculated for the mean laser beam by the number of beams that hit the other robot.
         // This is mathematically sound...and should work correctly. This helps speed up processing.
         // The only foreseeable flaw is perhaps that the noise in observations is kind of removed in the process.
-        p += weighting_multiplier*(pz);
+        p += weighting_multiplier*(pz*pz*pz);
 
         sample->weight *= p;
         total_weight += sample->weight;
@@ -567,16 +558,11 @@ double AMCLLaser::NestedBeamModel(pf_sample_t *upper_sample, AMCLLaserData *data
 
 
 
-
-
 // **** Advanced Weighting sensor models ****
 
 ////////////////////////////////////////////////////////////////////////////////
-
 // Determine the probability for the given pose
-
 // TODO: Implement advanced weighting procedure within the Beam Model
-
 double AMCLLaser::BeamModel_AW(AMCLLaserData *data, pf_sample_set_t* set, struct _pf_t * nested_pf_set )
 {
     AMCLLaser *self;
@@ -610,12 +596,12 @@ double AMCLLaser::BeamModel_AW(AMCLLaserData *data, pf_sample_set_t* set, struct
             obs_range = data->ranges[i][0];
             obs_bearing = data->ranges[i][1];
 
+
             //@KPM TODO : add color testing to map_calc_range here
 
             // Compute the range according to the map
             map_range = map_calc_range(self->map, pose.v[0], pose.v[1],
                                        pose.v[2] + obs_bearing, data->range_max);
-
             pz = 0.0;
 
             // Part 1: good, but noisy, hit
@@ -763,12 +749,15 @@ double AMCLLaser::LikelihoodFieldModel_AW(AMCLLaserData *data, pf_sample_set_t* 
             //****** Advanced Weighting steps ******
 
 
-            double current_weight, curr_distance, distance, nested_non_normalized_weight;
+            double current_weight, curr_distance, distance, nested_non_normalized_weight, diff_x,  diff_y;
 
             current_weight = 0.0;
             curr_distance = 0.0;
             distance = 99.0;
             nested_non_normalized_weight = 0.0;
+
+            diff_x=0.0;
+            diff_y=0.0;
 
             if(obs_color == 50.0){
                 for(int nested_sample_counter = 0; nested_sample_counter < nested_sample_set->sample_count; nested_sample_counter++){
@@ -776,12 +765,17 @@ double AMCLLaser::LikelihoodFieldModel_AW(AMCLLaserData *data, pf_sample_set_t* 
                     nested_sample = nested_sample_set->samples + nested_sample_counter;
 
                     // Convert to map grid coords.
+                    /*
                     int sample_x, sample_y;
                     sample_x = MAP_GXWX(self->map, nested_sample->pose.v[0]);
                     sample_y = MAP_GYWY(self->map, nested_sample->pose.v[1]);
 
                     curr_distance = sqrt((sample_x-mi)*(sample_x-mi) + (sample_y-mj)*(sample_y-mj)) * self->map->scale;
+                    */
 
+                    diff_x = hit.v[0]-nested_sample->pose.v[0];
+                    diff_y = hit.v[1]-nested_sample->pose.v[1];
+                    curr_distance = diff_x*diff_x + diff_y*diff_y;
                     /*
                     if(distance > self->map->max_occ_dist){  // Mapping any distance greater than max to max
                         distance = self->map->max_occ_dist;
@@ -797,6 +791,8 @@ double AMCLLaser::LikelihoodFieldModel_AW(AMCLLaserData *data, pf_sample_set_t* 
                     }
 
                 }
+
+                distance = sqrt(distance);
 
                 /*** If there is no nested particle within max_occ_dist of the observed hit
                  then use normal weighting otherwise use advanced weighting ***/
