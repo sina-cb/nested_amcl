@@ -63,7 +63,7 @@
 #include "cmvision/Blobs.h"
 #include "cmvision/Blob.h"
 
-#include "gazebo_msgs/GetModelState.h"
+//#include "gazebo_msgs/GetModelState.h"
 
 #include <fstream>
 #include <iostream>
@@ -310,8 +310,8 @@ private:
 
     /* Initialize true pose related stuff*/
 
-    ros::ServiceClient true_pose_client;
-    gazebo_msgs::GetModelState true_pose_service;
+    //ros::ServiceClient true_pose_client;
+    //gazebo_msgs::GetModelState true_pose_service;
 
     pf_vector_t true_pose_normal;
     pf_vector_t true_pose_nested;
@@ -420,7 +420,7 @@ AmclNode::AmclNode() :
     /* ****Data Collection**** */
 
 
-    true_pose_client = nh_.serviceClient<gazebo_msgs::GetModelState>("/gazebo/get_model_state");
+//    true_pose_client = nh_.serviceClient<gazebo_msgs::GetModelState>("/gazebo/get_model_state");
 
     std::string home_path = std::string(getenv("HOME"));
 
@@ -1337,6 +1337,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
 
         /* Collect true pose from gazebo */
 
+/*
         true_pose_service.request.model_name = std::string("Robot1");
         if (true_pose_client.call(true_pose_service))
         {
@@ -1370,7 +1371,9 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
           //exit(1);
         }
 
-        /* *** */
+*/
+
+        /* *** End collecting true poses */
 
 
 
@@ -1579,6 +1582,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
                                                set->samples[i].pose.v[1], 0)),
                             cloud_msg.poses[i]);
 
+/*
             double current_SE = ( (set->samples[i].pose.v[0]- true_pose_normal.v[0])
                                    *(set->samples[i].pose.v[0]- true_pose_normal.v[0])
                                    +
@@ -1590,11 +1594,13 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
 
             if( sqrt(current_SE) <= 1.0 )
                 normal_particles_within_1m++;
+*/
         }
 
+/*
         normal_MSE = squared_error/set->sample_count ;
         normal_RootMSE = sqrt(normal_MSE);
-
+*/
         particlecloud_pub_.publish(cloud_msg);
 
 
@@ -1641,6 +1647,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
                                     nested_cloud_msg.poses[curr_total_nested_particle_count++]);
 
 
+/*
                     double current_nested_SE = ( (nested_particles_set->samples[j].pose.v[0]- true_pose_nested.v[0])
                                                   *(nested_particles_set->samples[j].pose.v[0]- true_pose_nested.v[0])
                                                   +
@@ -1652,6 +1659,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
 
                     if( sqrt(current_nested_SE) <= 1.0 )
                         nested_particles_within_1m++;
+*/
 
                     /*
                     ROS_INFO("upper_lvl_particle: %d | nested_particle: %d ----- nested pose: %0.3f, %0.3f, %0.3f",
@@ -1664,8 +1672,10 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
                 }
             }
 
+/*
             nested_MSE = nested_squaredError / curr_total_nested_particle_count;
             nested_RootMSE = sqrt(nested_MSE);
+*/
 
             nested_particlecloud_pub_.publish(nested_cloud_msg);
 
@@ -2002,12 +2012,17 @@ AmclNode::log_data(geometry_msgs::PoseWithCovarianceStamped pose_bestEstimate){
     long int current_timestamp = tp.tv_sec * 1000 + tp.tv_usec / 1000; //get current timestamp in milliseconds
     long int elapsed_time = current_timestamp - start_timestamp;
 
+
+    double difference_in_true_and_estimate_normal = 0.0;
+/*
     double difference_in_true_and_estimate_normal = sqrt( (pose_bestEstimate.pose.pose.position.x- true_pose_normal.v[0])
                                                           *(pose_bestEstimate.pose.pose.position.x- true_pose_normal.v[0])
                                                           +
                                                           (pose_bestEstimate.pose.pose.position.y- true_pose_normal.v[1])
                                                           *(pose_bestEstimate.pose.pose.position.y- true_pose_normal.v[1])
                                                           );
+
+*/
 
 
 
