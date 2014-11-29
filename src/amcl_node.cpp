@@ -53,6 +53,7 @@
 #include "tf/transform_broadcaster.h"
 #include "tf/transform_listener.h"
 #include "tf/message_filter.h"
+#include "tf/tf.h"
 #include "message_filters/subscriber.h"
 
 // Dynamic_reconfigure
@@ -128,6 +129,8 @@ int compare_int(const void * a, const void * b){
 }
 
 
+static const std::string scan_topic_ = "scan";
+
 class AmclNode
 {
 public:
@@ -151,7 +154,7 @@ private:
     double occlusion_proportion;
 
 
-//    double get_landmark_r();
+    // double get_landmark_r();
 
     /* Initializing the file into which we'll collect all our data */
     std::stringstream headers;
@@ -190,10 +193,12 @@ private:
     // Message callbacks
     bool globalLocalizationCallback(std_srvs::Empty::Request& req,
                                     std_srvs::Empty::Response& res);
+    bool nomotionUpdateCallback(std_srvs::Empty::Request& req,
+                                std_srvs::Empty::Response& res);
+
     void laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan);
     void colorReceived(const cmvision::BlobsConstPtr& Blobs);
     void initialPoseReceived(const geometry_msgs::PoseWithCovarianceStampedConstPtr& msg);
-    void initialPoseReceivedOld(const geometry_msgs::PoseWithCovarianceStampedConstPtr& msg);
     void mapReceived(const nav_msgs::OccupancyGridConstPtr& msg);
 
     void handleMapMessage(const nav_msgs::OccupancyGrid& msg);
@@ -232,8 +237,7 @@ private:
 
     message_filters::Subscriber<sensor_msgs::LaserScan>* laser_scan_sub_;
     tf::MessageFilter<sensor_msgs::LaserScan>* laser_scan_filter_;
-    message_filters::Subscriber<geometry_msgs::PoseWithCovarianceStamped>* initial_pose_sub_;
-    tf::MessageFilter<geometry_msgs::PoseWithCovarianceStamped>* initial_pose_filter_;
+    ros::Subscriber initial_pose_sub_;
     std::vector< AMCLLaser* > lasers_;
     std::vector< bool > lasers_update_;
     std::map< std::string, int > frame_to_laser_;
@@ -248,6 +252,9 @@ private:
     int resample_count_;
     double laser_min_range_;
     double laser_max_range_;
+
+    //Nomotion update control
+    bool m_force_update;  // used to temporarily let amcl update samples even when no motion occurs...
 
     AMCLOdom* odom_;
     AMCLLaser* laser_;
@@ -278,6 +285,7 @@ private:
     ros::Publisher data_headers_pub_;
 
     ros::ServiceServer global_loc_srv_;
+    ros::ServiceServer nomotion_update_srv_; //to let amcl update samples without requiring motion
     ros::Subscriber initial_pose_sub_old_;
     ros::Subscriber map_sub_;
 
@@ -290,6 +298,7 @@ private:
     boost::recursive_mutex configuration_mutex_;
     dynamic_reconfigure::Server<amcl::AMCLConfig> *dsrv_;
     amcl::AMCLConfig default_config_;
+    ros::Timer check_laser_timer_;
 
     int max_beams_, min_particles_, max_particles_;
     int min_nested_particles_, max_nested_particles_;
@@ -303,6 +312,7 @@ private:
     double init_pose_[3];
     double init_cov_[3];
     laser_model_t laser_model_type_;
+    bool tf_broadcast_;
 
     //KPM: landmark location
     double landmark_loc_x;
@@ -323,6 +333,10 @@ private:
 
 
     void reconfigureCB(amcl::AMCLConfig &config, uint32_t level);
+
+    ros::Time last_laser_received_ts_;
+    ros::Duration laser_check_interval_;
+    void checkLaserReceived(const ros::TimerEvent& event);
 };
 
 std::vector<std::pair<int,int> > AmclNode::free_space_indices;
@@ -377,22 +391,22 @@ AmclNode::AmclNode() :
     private_nh_.param("first_map_only", first_map_only_, false);
 
     double tmp;
-    private_nh_.param("gui_publish_rate", tmp, 10.0);
+    private_nh_.param("gui_publish_rate", tmp, -1.0);
     gui_publish_period = ros::Duration(1.0/tmp);
     private_nh_.param("save_pose_rate", tmp, 0.5);
     save_pose_period = ros::Duration(1.0/tmp);
 
     private_nh_.param("laser_min_range", laser_min_range_, -1.0);
-    private_nh_.param("laser_max_range", laser_max_range_, 4.0);
-    private_nh_.param("laser_max_beams", max_beams_, 60);
-    private_nh_.param("min_particles", min_particles_, 1);
-    private_nh_.param("max_particles", max_particles_, 2);
+    private_nh_.param("laser_max_range", laser_max_range_, -1.0);
+    private_nh_.param("laser_max_beams", max_beams_, 30);
+    private_nh_.param("min_particles", min_particles_, 100);
+    private_nh_.param("max_particles", max_particles_, 5000);
 
     private_nh_.param("min_nested_particles", min_nested_particles_, 1);
     private_nh_.param("max_nested_particles", max_nested_particles_, 1);
     private_nh_.param("nesting_lvl", nesting_lvl_, 0);
 
-    private_nh_.param("kld_err", pf_err_, 0.05);
+    private_nh_.param("kld_err", pf_err_, 0.01);
     private_nh_.param("kld_z", pf_z_, 0.99);
     private_nh_.param("odom_alpha1", alpha1_, 0.2);
     private_nh_.param("odom_alpha2", alpha2_, 0.2);
@@ -400,10 +414,10 @@ AmclNode::AmclNode() :
     private_nh_.param("odom_alpha4", alpha4_, 0.2);
     private_nh_.param("odom_alpha5", alpha5_, 0.2);
 
-    private_nh_.param("laser_z_hit", z_hit_, 0.5);
-    private_nh_.param("laser_z_short", z_short_, 0.05);
+    private_nh_.param("laser_z_hit", z_hit_, 0.95);
+    private_nh_.param("laser_z_short", z_short_, 0.1);
     private_nh_.param("laser_z_max", z_max_, 0.05);
-    private_nh_.param("laser_z_rand", z_rand_, 0.5);
+    private_nh_.param("laser_z_rand", z_rand_, 0.05);
     private_nh_.param("laser_sigma_hit", sigma_hit_, 0.2);
     private_nh_.param("laser_lambda_short", lambda_short_, 0.1);
     private_nh_.param("laser_likelihood_max_dist", laser_likelihood_max_dist_, 2.0);
@@ -485,8 +499,8 @@ AmclNode::AmclNode() :
             << "Occlusion proportion (0.0-1.0)" << ","
 
             << "True Nested Pose" << ","
-//                                 << "Estimated Nested Pose" << ","
-//                                 << "Distance between nested true and nested estimate" << ","
+//          << "Estimated Nested Pose" << ","
+//          << "Distance between nested true and nested estimate" << ","
             << "Nested Particle MSE" << ","
             << "Nested Particle RMS Error" << ","
             << "Nested particles within 1m of true nested pose" << ","
@@ -531,6 +545,10 @@ AmclNode::AmclNode() :
         odom_model_type_ = ODOM_MODEL_DIFF;
     else if(tmp_model_type == "omni")
         odom_model_type_ = ODOM_MODEL_OMNI;
+    else if(tmp_model_type == "diff-corrected")
+        odom_model_type_ = ODOM_MODEL_DIFF_CORRECTED;
+    else if(tmp_model_type == "omni-corrected")
+        odom_model_type_ = ODOM_MODEL_OMNI_CORRECTED;
     else
     {
         ROS_WARN("Unknown odom model type \"%s\"; defaulting to diff model",
@@ -538,26 +556,58 @@ AmclNode::AmclNode() :
         odom_model_type_ = ODOM_MODEL_DIFF;
     }
 
-    private_nh_.param("update_min_d", d_thresh_, 0.25);
+    private_nh_.param("update_min_d", d_thresh_, 0.2);
     private_nh_.param("update_min_a", a_thresh_, M_PI/6.0);
     private_nh_.param("odom_frame_id", odom_frame_id_, std::string("odom"));
     private_nh_.param("base_frame_id", base_frame_id_, std::string("base_link"));
-    private_nh_.param("global_frame_id", global_frame_id_, std::string("/map"));
-    private_nh_.param("resample_interval", resample_interval_, 1);
+    private_nh_.param("global_frame_id", global_frame_id_, std::string("map")); // "/map" in nested_amcl for preventing tf prefixing
+    private_nh_.param("resample_interval", resample_interval_, 2);
     double tmp_tol;
-    private_nh_.param("transform_tolerance", tmp_tol, 1.0);
+    private_nh_.param("transform_tolerance", tmp_tol, 0.1);
     private_nh_.param("recovery_alpha_slow", alpha_slow_, 0.001);
     private_nh_.param("recovery_alpha_fast", alpha_fast_, 0.1);
+    private_nh_.param("tf_broadcast", tf_broadcast_, true);
 
     transform_tolerance_.fromSec(tmp_tol);
 
-    private_nh_.param("initial_pose_x", init_pose_[0], 0.0);
-    private_nh_.param("initial_pose_y", init_pose_[1], 0.0);
-    private_nh_.param("initial_pose_a", init_pose_[2], 0.0);
-    private_nh_.param("initial_cov_xx", init_cov_[0], 0.5 * 0.5);
-    private_nh_.param("initial_cov_yy", init_cov_[1], 0.5 * 0.5);
-    private_nh_.param("initial_cov_aa", init_cov_[2],
-                      (M_PI/12.0) * (M_PI/12.0));
+    init_pose_[0] = 0.0;
+    init_pose_[1] = 0.0;
+    init_pose_[2] = 0.0;
+    init_cov_[0] = 0.5 * 0.5;
+    init_cov_[1] = 0.5 * 0.5;
+    init_cov_[2] = (M_PI/12.0) * (M_PI/12.0);
+    // Check for NAN on input from param server, #5239
+    double tmp_pos;
+    private_nh_.param("initial_pose_x", tmp_pos, init_pose_[0]);
+    if(!std::isnan(tmp_pos))
+        init_pose_[0] = tmp_pos;
+    else
+        ROS_WARN("ignoring NAN in initial pose X position");
+    private_nh_.param("initial_pose_y", tmp_pos, init_pose_[1]);
+    if(!std::isnan(tmp_pos))
+        init_pose_[1] = tmp_pos;
+    else
+        ROS_WARN("ignoring NAN in initial pose Y position");
+    private_nh_.param("initial_pose_a", tmp_pos, init_pose_[2]);
+    if(!std::isnan(tmp_pos))
+        init_pose_[2] = tmp_pos;
+    else
+        ROS_WARN("ignoring NAN in initial pose Yaw");
+    private_nh_.param("initial_cov_xx", tmp_pos, init_cov_[0]);
+    if(!std::isnan(tmp_pos))
+        init_cov_[0] =tmp_pos;
+    else
+        ROS_WARN("ignoring NAN in initial covariance XX");
+    private_nh_.param("initial_cov_yy", tmp_pos, init_cov_[1]);
+    if(!std::isnan(tmp_pos))
+        init_cov_[1] = tmp_pos;
+    else
+        ROS_WARN("ignoring NAN in initial covariance YY");
+    private_nh_.param("initial_cov_aa", tmp_pos, init_cov_[2]);
+    if(!std::isnan(tmp_pos))
+        init_cov_[2] = tmp_pos;
+    else
+        ROS_WARN("ignoring NAN in initial covariance AA");
 
     cloud_pub_interval.fromSec(1.0);
     tfb_ = new tf::TransformBroadcaster();
@@ -565,8 +615,8 @@ AmclNode::AmclNode() :
 
     /**** Publishers and Subscribers ****/
 
-    pose_pub_ = nh_.advertise<geometry_msgs::PoseWithCovarianceStamped>("amcl_pose", 2);
-    particlecloud_pub_ = nh_.advertise<geometry_msgs::PoseArray>("particlecloud", 2);
+    pose_pub_ = nh_.advertise<geometry_msgs::PoseWithCovarianceStamped>("amcl_pose", 2, true);
+    particlecloud_pub_ = nh_.advertise<geometry_msgs::PoseArray>("particlecloud", 2, true);
     nested_particlecloud_pub_ = nh_.advertise<geometry_msgs::PoseArray>("nested_particlecloud", 2);
 
     npf_data_pub_ = nh_.advertise<std_msgs::String>("nested_amcl_data", 2);
@@ -576,7 +626,9 @@ AmclNode::AmclNode() :
     global_loc_srv_ = nh_.advertiseService("global_localization",
                                            &AmclNode::globalLocalizationCallback,
                                            this);
-    laser_scan_sub_ = new message_filters::Subscriber<sensor_msgs::LaserScan>(nh_, "scan", 100);
+    nomotion_update_srv_= nh_.advertiseService("request_nomotion_update", &AmclNode::nomotionUpdateCallback, this);
+
+    laser_scan_sub_ = new message_filters::Subscriber<sensor_msgs::LaserScan>(nh_, scan_topic_, 100);
     laser_scan_filter_ =
             new tf::MessageFilter<sensor_msgs::LaserScan>(*laser_scan_sub_,
                                                           *tf_,
@@ -584,11 +636,7 @@ AmclNode::AmclNode() :
                                                           100);
     laser_scan_filter_->registerCallback(boost::bind(&AmclNode::laserReceived,
                                                      this, _1));
-    initial_pose_sub_ = new message_filters::Subscriber<geometry_msgs::PoseWithCovarianceStamped>(nh_, "initialpose", 2);
-    initial_pose_filter_ = new tf::MessageFilter<geometry_msgs::PoseWithCovarianceStamped>(*initial_pose_sub_, *tf_, global_frame_id_, 2);
-    initial_pose_filter_->registerCallback(boost::bind(&AmclNode::initialPoseReceived, this, _1));
-
-    initial_pose_sub_old_ = nh_.subscribe("initialpose", 2, &AmclNode::initialPoseReceivedOld, this);
+    initial_pose_sub_ = nh_.subscribe("initialpose", 2, &AmclNode::initialPoseReceived, this);
 
     color_subscriber = nh_.subscribe("blobs", 2, &AmclNode::colorReceived, this); //KPM
 
@@ -600,10 +648,21 @@ AmclNode::AmclNode() :
     } else {
         requestMap();
     }
+    m_force_update = false;
 
     dsrv_ = new dynamic_reconfigure::Server<amcl::AMCLConfig>(ros::NodeHandle("~"));
     dynamic_reconfigure::Server<amcl::AMCLConfig>::CallbackType cb = boost::bind(&AmclNode::reconfigureCB, this, _1, _2);
     dsrv_->setCallback(cb);
+
+    // 15s timer to warn on lack of receipt of laser scans, #5209
+    laser_check_interval_ = ros::Duration(15.0);
+    check_laser_timer_ = nh_.createTimer(laser_check_interval_,
+                                         boost::bind(&AmclNode::checkLaserReceived, this, _1));
+
+
+
+
+
 
     //Initializing bool color_angles[641]
 
@@ -673,10 +732,14 @@ void AmclNode::reconfigureCB(AMCLConfig &config, uint32_t level)
         odom_model_type_ = ODOM_MODEL_DIFF;
     else if(config.odom_model_type == "omni")
         odom_model_type_ = ODOM_MODEL_OMNI;
+    else if(config.odom_model_type == "diff-corrected")
+        odom_model_type_ = ODOM_MODEL_DIFF_CORRECTED;
+    else if(config.odom_model_type == "omni-corrected")
+        odom_model_type_ = ODOM_MODEL_OMNI_CORRECTED;
 
     if(config.min_particles > config.max_particles)
     {
-        ROS_WARN("You've set min_particles to be less than max particles, this isn't allowed so they'll be set to be equal.");
+        ROS_WARN("You've set min_particles to be greater than max particles, this isn't allowed so they'll be set to be equal.");
         config.max_particles = config.min_particles;
     }
 
@@ -684,6 +747,7 @@ void AmclNode::reconfigureCB(AMCLConfig &config, uint32_t level)
     max_particles_ = config.max_particles;
     alpha_slow_ = config.recovery_alpha_slow;
     alpha_fast_ = config.recovery_alpha_fast;
+    tf_broadcast_ = config.tf_broadcast;
 
     pf_ = pf_alloc(min_particles_, max_particles_,
                    alpha_slow_, alpha_fast_,
@@ -718,10 +782,7 @@ void AmclNode::reconfigureCB(AMCLConfig &config, uint32_t level)
     odom_ = new AMCLOdom(map_);
 
     ROS_ASSERT(odom_);
-    if(odom_model_type_ == ODOM_MODEL_OMNI)
-        odom_->SetModelOmni(alpha1_, alpha2_, alpha3_, alpha4_, alpha5_);
-    else
-        odom_->SetModelDiff(alpha1_, alpha2_, alpha3_, alpha4_);
+    odom_->SetModel( odom_model_type_, alpha1_, alpha2_, alpha3_, alpha4_, alpha5_ );
     // Laser
     delete laser_;
     laser_ = new AMCLLaser(max_beams_, map_, color_map);
@@ -750,9 +811,19 @@ void AmclNode::reconfigureCB(AMCLConfig &config, uint32_t level)
     laser_scan_filter_->registerCallback(boost::bind(&AmclNode::laserReceived,
                                                      this, _1));
 
-    delete initial_pose_filter_;
-    initial_pose_filter_ = new tf::MessageFilter<geometry_msgs::PoseWithCovarianceStamped>(*initial_pose_sub_, *tf_, global_frame_id_, 2);
-    initial_pose_filter_->registerCallback(boost::bind(&AmclNode::initialPoseReceived, this, _1));
+    initial_pose_sub_ = nh_.subscribe("initialpose", 2, &AmclNode::initialPoseReceived, this);
+}
+
+void 
+AmclNode::checkLaserReceived(const ros::TimerEvent& event)
+{
+    ros::Duration d = ros::Time::now() - last_laser_received_ts_;
+    if(d > laser_check_interval_)
+    {
+        ROS_WARN("No laser scan received (and thus no pose updates have been published) for %f seconds.  Verify that data is being published on the %s topic.",
+                 d.toSec(),
+                 ros::names::resolve(scan_topic_).c_str());
+    }
 }
 
 void
@@ -764,9 +835,7 @@ AmclNode::requestMap()
     nav_msgs::GetMap::Request  req;
     nav_msgs::GetMap::Response resp;
     ROS_INFO("Requesting the map...");
-
-    //changing "static_map" to "/static_map" for subscribing to the same topic when running multiple amcl nodes for multiple robots
-    while(!ros::service::call("/static_map", req, resp))
+    while(!ros::service::call("static_map", req, resp))
     {
         ROS_WARN("Request for map failed; trying again...");
         ros::Duration d(0.5);
@@ -798,12 +867,16 @@ AmclNode::handleMapMessage(const nav_msgs::OccupancyGrid& msg)
              msg.info.resolution);
 
     freeMapDependentMemory();
+    // Clear queued laser objects because they hold pointers to the existing
+    // map, #5202.
+    lasers_.clear();
+    lasers_update_.clear();
+    frame_to_laser_.clear();
 
     map_ = convertMap(msg,100,false);
     color_map = convertMap(msg,50,true);
 
 #if NEW_UNIFORM_SAMPLING
-    ROS_INFO("NEW_UNIFORM_SAMPLING is %d",NEW_UNIFORM_SAMPLING);
     // Index of free space
     free_space_indices.resize(0);
     for(int i = 0; i < map_->size_x; i++)
@@ -837,15 +910,11 @@ AmclNode::handleMapMessage(const nav_msgs::OccupancyGrid& msg)
     // Instantiate the sensor objects
     // Odometry
     delete odom_;
-
     // KPM: Replacing the original constructor with one that initializes the map
     //odom_ = new AMCLOdom();
     odom_ = new AMCLOdom(map_);
     ROS_ASSERT(odom_);
-    if(odom_model_type_ == ODOM_MODEL_OMNI)
-        odom_->SetModelOmni(alpha1_, alpha2_, alpha3_, alpha4_, alpha5_);
-    else
-        odom_->SetModelDiff(alpha1_, alpha2_, alpha3_, alpha4_);
+    odom_->SetModel( odom_model_type_, alpha1_, alpha2_, alpha3_, alpha4_, alpha5_ );
     // Laser
     delete laser_;
     laser_ = new AMCLLaser(max_beams_, map_, color_map);
@@ -944,11 +1013,8 @@ AmclNode::~AmclNode()
     freeMapDependentMemory();
     delete laser_scan_filter_;
     delete laser_scan_sub_;
-    delete initial_pose_filter_;
-    delete initial_pose_sub_;
     delete tfb_;
     delete tf_;
-
     // TODO: delete everything allocated in constructor
 }
 
@@ -963,7 +1029,7 @@ AmclNode::getOdomPose(tf::Stamped<tf::Pose>& odom_pose,
 {
     // Get the robot's pose
     tf::Stamped<tf::Pose> ident (tf::Transform(tf::createIdentityQuaternion(),
-                                             tf::Vector3(0,0,0)), t, f);
+                                               tf::Vector3(0,0,0)), t, f);
     try
     {
         this->tf_->transformPose(odom_frame_id_, ident, odom_pose);
@@ -1065,8 +1131,8 @@ AmclNode::dualMCL_PoseGenerator(void* arg, double landmark_r, double landmark_ph
 
             double landmark_phi_ambiguity = (drand48() - 0.5) * 0.1 * M_PI / 180;
 
-            newPose.v[0] = (landmark_r + landmark_size_ambiguity) *  cos(gamma) + landmark_x;
-            newPose.v[1] = (landmark_r + landmark_size_ambiguity) *  sin(gamma) + landmark_y;
+            newPose.v[0] = (landmark_r + landmark_size_ambiguity) * cos(gamma) + landmark_x;
+            newPose.v[1] = (landmark_r + landmark_size_ambiguity) * sin(gamma) + landmark_y;
             newPose.v[2] = gamma - M_PI - (landmark_phi + landmark_phi_ambiguity);
 
             int i = MAP_GXWX(map, newPose.v[0]);
@@ -1102,10 +1168,20 @@ AmclNode::globalLocalizationCallback(std_srvs::Empty::Request& req,
     return true;
 }
 
+// force nomotion updates (amcl updating without requiring motion)
+bool 
+AmclNode::nomotionUpdateCallback(std_srvs::Empty::Request& req,
+                                 std_srvs::Empty::Response& res)
+{
+    m_force_update = true;
+    //ROS_INFO("Requesting no-motion update");
+    return true;
+}
+
 
 /* KPM
-  * This function is the color subscriber function that sets the color_angles array
-  */
+* This function is the color subscriber function that sets the color_angles array
+*/
 
 void
 AmclNode::colorReceived(const cmvision::BlobsConstPtr &Blobs){
@@ -1120,8 +1196,8 @@ AmclNode::colorReceived(const cmvision::BlobsConstPtr &Blobs){
 
     /**Non-Contiguous Assumption**/
     /*
-      // This is for when we assume that the landmark can have holes in it that correspond to
-      // the places where color is not detected
+    // This is for when we assume that the landmark can have holes in it that correspond to
+    // the places where color is not detected
 
     while( blob_index < (int)Blob_holder.blob_count){
 
@@ -1179,6 +1255,7 @@ AmclNode::colorReceived(const cmvision::BlobsConstPtr &Blobs){
 void
 AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
 {
+    last_laser_received_ts_ = ros::Time::now();
     if( map_ == NULL ) {
         return;
     }
@@ -1202,7 +1279,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
         // In short, we are creating a new frame for the laser and initializing the location of
         // the laser within that frame at (0,0,0,0) and current time.
         tf::Stamped<tf::Pose> ident (tf::Transform(tf::createIdentityQuaternion(),
-                                                 tf::Vector3(0,0,0)),
+                                                   tf::Vector3(0,0,0)),
                                      ros::Time(), laser_scan->header.frame_id);
         tf::Stamped<tf::Pose> laser_pose;
         try
@@ -1269,6 +1346,8 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
         bool update = fabs(delta.v[0]) > d_thresh_ ||
                 fabs(delta.v[1]) > d_thresh_ ||
                 fabs(delta.v[2]) > a_thresh_;
+        update = update || m_force_update;
+        m_force_update=false;
 
         // Set the laser update flags
         if(update)
@@ -1337,41 +1416,41 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
 
         /* Collect true pose from gazebo */
 
-/*
-        true_pose_service.request.model_name = std::string("Robot1");
-        if (true_pose_client.call(true_pose_service))
-        {
-            true_pose_normal.v[0] = true_pose_service.response.pose.position.x;
-            true_pose_normal.v[1] = true_pose_service.response.pose.position.y;
-            true_pose_normal.v[2] = 0.0;
-            ROS_DEBUG("\n Normal true pose \n\t x: %f \n\t y: %f \n",
-                     true_pose_service.response.pose.position.x,
-                     true_pose_service.response.pose.position.y);
-        }
-        else
-        {
-          ROS_ERROR("Failed to call service gazebo/get_model_state");
-          //exit(1);
-        }
+        /*
+                    true_pose_service.request.model_name = std::string("Robot1");
+                    if (true_pose_client.call(true_pose_service))
+                    {
+                    true_pose_normal.v[0] = true_pose_service.response.pose.position.x;
+                    true_pose_normal.v[1] = true_pose_service.response.pose.position.y;
+                    true_pose_normal.v[2] = 0.0;
+                    ROS_DEBUG("\n Normal true pose \n\t x: %f \n\t y: %f \n",
+                                    true_pose_service.response.pose.position.x,
+                                    true_pose_service.response.pose.position.y);
+                }
+                else
+                {
+                ROS_ERROR("Failed to call service gazebo/get_model_state");
+                //exit(1);
+                }
 
 
-        true_pose_service.request.model_name = std::string("Robot2");
-        if (true_pose_client.call(true_pose_service))
-        {
-            true_pose_nested.v[0] = true_pose_service.response.pose.position.x;
-            true_pose_nested.v[1] = true_pose_service.response.pose.position.y;
-            true_pose_nested.v[2] = 0.0;
-            ROS_DEBUG("\n Nested true pose \n\t x: %f \n\t y: %f \n",
-                     true_pose_service.response.pose.position.x,
-                     true_pose_service.response.pose.position.y);
-        }
-        else
-        {
-          ROS_ERROR("Failed to call service gazebo/get_model_state");
-          //exit(1);
-        }
+                true_pose_service.request.model_name = std::string("Robot2");
+                if (true_pose_client.call(true_pose_service))
+                {
+                    true_pose_nested.v[0] = true_pose_service.response.pose.position.x;
+                    true_pose_nested.v[1] = true_pose_service.response.pose.position.y;
+                    true_pose_nested.v[2] = 0.0;
+                    ROS_DEBUG("\n Nested true pose \n\t x: %f \n\t y: %f \n",
+                                    true_pose_service.response.pose.position.x,
+                    true_pose_service.response.pose.position.y);
+                }
+                else
+                {
+                ROS_ERROR("Failed to call service gazebo/get_model_state");
+                //exit(1);
+                }
 
-*/
+                */
 
         /* *** End collecting true poses */
 
@@ -1409,7 +1488,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
         // so we need to take their absolute values
         double difference_in_min_angles = fabs(angle_min) - fabs(color_min_angle);
 
-        //ROS_INFO("\n       angle_min: %f", angle_min);
+        //ROS_INFO("\n angle_min: %f", angle_min);
         //ROS_INFO("\n angle_increment: %f", angle_increment);
 
 
@@ -1465,11 +1544,11 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
 
 
             /**
-             * @KPM:
-             * Add calculation of camera frame angle in radians of brown pixels (from right).
-             * Compare this to i*angle_increment and if it matches then set ldata.ranges[i][2] to 50 for that i
-             *
-             */
+              * @KPM:
+              * Add calculation of camera frame angle in radians of brown pixels (from right).
+              * Compare this to i*angle_increment and if it matches then set ldata.ranges[i][2] to 50 for that i
+              *
+              */
 
             // KPM: I think difference_in_min_angles should actually be added,
             // since its positive when laser min angle is more than color min angle
@@ -1570,158 +1649,161 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
 
         // Publish the resulting cloud
         // TODO: set maximum rate for publishing
-        geometry_msgs::PoseArray cloud_msg;
-        cloud_msg.header.stamp = ros::Time::now();
-        cloud_msg.header.frame_id = global_frame_id_;
-        cloud_msg.poses.resize(set->sample_count);
-        normal_particles_within_1m = 0;
-        for(int i=0;i<set->sample_count;i++)
-        {
-            tf::poseTFToMsg(tf::Pose(tf::createQuaternionFromYaw(set->samples[i].pose.v[2]),
-                                     tf::Vector3(set->samples[i].pose.v[0],
-                                               set->samples[i].pose.v[1], 0)),
-                            cloud_msg.poses[i]);
+        if (!m_force_update) {
+            geometry_msgs::PoseArray cloud_msg;
+            cloud_msg.header.stamp = ros::Time::now();
+            cloud_msg.header.frame_id = global_frame_id_;
+            cloud_msg.poses.resize(set->sample_count);
+            normal_particles_within_1m = 0;
+            for(int i=0;i<set->sample_count;i++)
+            {
+                tf::poseTFToMsg(tf::Pose(tf::createQuaternionFromYaw(set->samples[i].pose.v[2]),
+                                         tf::Vector3(set->samples[i].pose.v[0],
+                                                     set->samples[i].pose.v[1], 0)),
+                                cloud_msg.poses[i]);
 
-/*
-            double current_SE = ( (set->samples[i].pose.v[0]- true_pose_normal.v[0])
-                                   *(set->samples[i].pose.v[0]- true_pose_normal.v[0])
-                                   +
-                                   (set->samples[i].pose.v[1]- true_pose_normal.v[1])
-                                   *(set->samples[i].pose.v[1]- true_pose_normal.v[1])
-                                   );
+                /*
+                double current_SE = ( (set->samples[i].pose.v[0]- true_pose_normal.v[0])
+                                      *(set->samples[i].pose.v[0]- true_pose_normal.v[0])
+                                      +
+                                      (set->samples[i].pose.v[1]- true_pose_normal.v[1])
+                                      *(set->samples[i].pose.v[1]- true_pose_normal.v[1])
+                                      );
 
-            squared_error = squared_error + current_SE;
+                squared_error = squared_error + current_SE;
 
-            if( sqrt(current_SE) <= 1.0 )
-                normal_particles_within_1m++;
+                if( sqrt(current_SE) <= 1.0 )
+                    normal_particles_within_1m++;
 */
-        }
-
-/*
-        normal_MSE = squared_error/set->sample_count ;
-        normal_RootMSE = sqrt(normal_MSE);
-*/
-        particlecloud_pub_.publish(cloud_msg);
-
-
-
-        /** Publish the nested particle cloud **/
-
-        if(pf_->nesting_lvl > 0){
-            // Publish the resulting nested particle cloud
-            // TODO: set maximum rate for publishing
-            geometry_msgs::PoseArray nested_cloud_msg;
-            nested_cloud_msg.header.stamp = ros::Time::now();
-            nested_cloud_msg.header.frame_id = global_frame_id_;
-            nested_cloud_msg.poses.resize(0);
-
-            //ROS_INFO("pf_->nesting_lvl : %d", pf_->nesting_lvl);
-
-            pf_t *nested_pf_set;
-            pf_t *nested_pf;
-
-
-            pf_sample_set_t *upper_particles_set = pf_->sets + pf_->current_set;
-            pf_sample_set_t *nested_particles_set;
-
-
-            nested_pf_set = pf_get_this_nested_set(pf_, pf_->current_set);
-
-            int curr_total_nested_particle_count = 0;
-            double nested_squaredError = 0.0;
-
-            nested_particles_within_1m = 0;
-            for(int i=0; i< upper_particles_set->sample_count ; i++){
-
-                //                nested_pf_set = pf_->nested_pf_sets[i][pf_->current_set];
-                nested_pf = nested_pf_set + i;
-                nested_particles_set = nested_pf->sets + nested_pf->current_set;
-
-                nested_cloud_msg.poses.resize(nested_cloud_msg.poses.size() + nested_particles_set->sample_count);
-
-                for(int j=0;j<nested_particles_set->sample_count;j++)
-                {
-                    tf::poseTFToMsg(tf::Pose(tf::createQuaternionFromYaw(nested_particles_set->samples[j].pose.v[2]),
-                                             tf::Vector3(nested_particles_set->samples[j].pose.v[0],
-                                                       nested_particles_set->samples[j].pose.v[1], 0)),
-                                    nested_cloud_msg.poses[curr_total_nested_particle_count++]);
-
-
-/*
-                    double current_nested_SE = ( (nested_particles_set->samples[j].pose.v[0]- true_pose_nested.v[0])
-                                                  *(nested_particles_set->samples[j].pose.v[0]- true_pose_nested.v[0])
-                                                  +
-                                                  (nested_particles_set->samples[j].pose.v[1]- true_pose_nested.v[1])
-                                                  *(nested_particles_set->samples[j].pose.v[1]- true_pose_nested.v[1])
-                                                  );
-
-                    nested_squaredError = nested_squaredError + current_nested_SE;
-
-                    if( sqrt(current_nested_SE) <= 1.0 )
-                        nested_particles_within_1m++;
-*/
-
-                    /*
-                    ROS_INFO("upper_lvl_particle: %d | nested_particle: %d ----- nested pose: %0.3f, %0.3f, %0.3f",
-                             i, j,
-                             nested_particles_set->samples[j].pose.v[0],
-                             nested_particles_set->samples[j].pose.v[1],
-                             nested_particles_set->samples[j].pose.v[2]);
-                    */
-
-                }
             }
 
 /*
+            normal_MSE = squared_error/set->sample_count ;
+            normal_RootMSE = sqrt(normal_MSE);
+*/
+            particlecloud_pub_.publish(cloud_msg);
+
+
+
+            /** Publish the nested particle cloud **/
+
+            if(pf_->nesting_lvl > 0){
+                // Publish the resulting nested particle cloud
+                // TODO: set maximum rate for publishing
+                geometry_msgs::PoseArray nested_cloud_msg;
+                nested_cloud_msg.header.stamp = ros::Time::now();
+                nested_cloud_msg.header.frame_id = global_frame_id_;
+                nested_cloud_msg.poses.resize(0);
+
+                //ROS_INFO("pf_->nesting_lvl : %d", pf_->nesting_lvl);
+
+                pf_t *nested_pf_set;
+                pf_t *nested_pf;
+
+
+                pf_sample_set_t *upper_particles_set = pf_->sets + pf_->current_set;
+                pf_sample_set_t *nested_particles_set;
+
+
+                nested_pf_set = pf_get_this_nested_set(pf_, pf_->current_set);
+
+                int curr_total_nested_particle_count = 0;
+                double nested_squaredError = 0.0;
+
+                nested_particles_within_1m = 0;
+                for(int i=0; i< upper_particles_set->sample_count ; i++){
+
+                    //                nested_pf_set = pf_->nested_pf_sets[i][pf_->current_set];
+                    nested_pf = nested_pf_set + i;
+                    nested_particles_set = nested_pf->sets + nested_pf->current_set;
+
+                    nested_cloud_msg.poses.resize(nested_cloud_msg.poses.size() + nested_particles_set->sample_count);
+
+                    for(int j=0;j<nested_particles_set->sample_count;j++)
+                    {
+                        tf::poseTFToMsg(tf::Pose(tf::createQuaternionFromYaw(nested_particles_set->samples[j].pose.v[2]),
+                                                 tf::Vector3(nested_particles_set->samples[j].pose.v[0],
+                                                             nested_particles_set->samples[j].pose.v[1], 0)),
+                                        nested_cloud_msg.poses[curr_total_nested_particle_count++]);
+
+
+                        /*
+            double current_nested_SE = ( (nested_particles_set->samples[j].pose.v[0]- true_pose_nested.v[0])
+            *(nested_particles_set->samples[j].pose.v[0]- true_pose_nested.v[0])
+            +
+            (nested_particles_set->samples[j].pose.v[1]- true_pose_nested.v[1])
+            *(nested_particles_set->samples[j].pose.v[1]- true_pose_nested.v[1])
+                                                                );
+
+                                nested_squaredError = nested_squaredError + current_nested_SE;
+
+            if( sqrt(current_nested_SE) <= 1.0 )
+            nested_particles_within_1m++;
+                */
+
+                        /*
+            ROS_INFO("upper_lvl_particle: %d | nested_particle: %d ----- nested pose: %0.3f, %0.3f, %0.3f",
+            i, j,
+            nested_particles_set->samples[j].pose.v[0],
+            nested_particles_set->samples[j].pose.v[1],
+            nested_particles_set->samples[j].pose.v[2]);
+                                */
+
+                    }
+                }
+
+                /*
             nested_MSE = nested_squaredError / curr_total_nested_particle_count;
             nested_RootMSE = sqrt(nested_MSE);
-*/
+            */
 
-            nested_particlecloud_pub_.publish(nested_cloud_msg);
-
-
-
-
-
-            //printf(" This is getting printed! Yay!!!");
-            ROS_INFO("\n\n\t normal_particles:\t\t %d \n"
-                     "\t\t Avg Weight: %f \n"
-                     "\t\t Covariance: \n"
-                     "\t\t\t %f \t \t \n"
-                     "\t\t\t \t %f \t \n"
-                     "\t\t\t \t \t %f \n\n"
-                     "\t nested_particles in one pool:\t %d \n"
-                     "\t Total nested_particles:\t %d\n"
-                     "\t Grand Total of particles:\t %d\n",
-                     pf_->sets[pf_->current_set].sample_count,
-                     pf_->sets[pf_->current_set].avg_weight,
-                     pf_->sets[pf_->current_set].cov.m[0][0],
-                     //pf_->sets[pf_->current_set].cov.m[0][1],
-                     //pf_->sets[pf_->current_set].cov.m[0][2],
-                     //pf_->sets[pf_->current_set].cov.m[1][0],
-                     pf_->sets[pf_->current_set].cov.m[1][1],
-                     //pf_->sets[pf_->current_set].cov.m[1][2],
-                     //pf_->sets[pf_->current_set].cov.m[2][0],
-                     //pf_->sets[pf_->current_set].cov.m[2][1],
-                     pf_->sets[pf_->current_set].cov.m[2][2],
-                     nested_particles_set->sample_count,
-                     curr_total_nested_particle_count,
-                     pf_->sets[pf_->current_set].sample_count + curr_total_nested_particle_count);
+                nested_particlecloud_pub_.publish(nested_cloud_msg);
 
 
 
 
-            // For Data Collection
-            isLandmarkObserved = ldata.isLandmarkObserved;
-            nested_particle_count = nested_particles_set->sample_count;
-            total_nested_particle_count = curr_total_nested_particle_count;
+
+                //printf(" This is getting printed! Yay!!!");
+                ROS_INFO("\n\n\t normal_particles:\t\t %d \n"
+                         "\t\t Avg Weight: %f \n"
+                         "\t\t Covariance: \n"
+                         "\t\t\t %f \t \t \n"
+                         "\t\t\t \t %f \t \n"
+                         "\t\t\t \t \t %f \n\n"
+                         "\t nested_particles in one pool:\t %d \n"
+                         "\t Total nested_particles:\t %d\n"
+                         "\t Grand Total of particles:\t %d\n",
+                         pf_->sets[pf_->current_set].sample_count,
+                         pf_->sets[pf_->current_set].avg_weight,
+                         pf_->sets[pf_->current_set].cov.m[0][0],
+                         //pf_->sets[pf_->current_set].cov.m[0][1],
+                         //pf_->sets[pf_->current_set].cov.m[0][2],
+                         //pf_->sets[pf_->current_set].cov.m[1][0],
+                         pf_->sets[pf_->current_set].cov.m[1][1],
+                         //pf_->sets[pf_->current_set].cov.m[1][2],
+                         //pf_->sets[pf_->current_set].cov.m[2][0],
+                         //pf_->sets[pf_->current_set].cov.m[2][1],
+                         pf_->sets[pf_->current_set].cov.m[2][2],
+                         nested_particles_set->sample_count,
+                         curr_total_nested_particle_count,
+                         pf_->sets[pf_->current_set].sample_count + curr_total_nested_particle_count);
 
 
-            /* **** Write to Data Collection File **** */
-
-            /* **** End writing to Data Collection File **** */
 
 
+                // For Data Collection
+                isLandmarkObserved = ldata.isLandmarkObserved;
+                nested_particle_count = nested_particles_set->sample_count;
+                total_nested_particle_count = curr_total_nested_particle_count;
+
+
+                /* **** Write to Data Collection File **** */
+
+                /* **** End writing to Data Collection File **** */
+
+
+
+            }
 
         }
 
@@ -1848,15 +1930,18 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
                                        tf::Point(odom_to_map.getOrigin()));
             latest_tf_valid_ = true;
 
-            // We want to send a transform that is good up until a
-            // tolerance time so that odom can be used
-            ros::Time transform_expiration = (laser_scan->header.stamp +
-                                              transform_tolerance_);
-            tf::StampedTransform tmp_tf_stamped(latest_tf_.inverse(),
-                                                transform_expiration,
-                                                global_frame_id_, odom_frame_id_);
-            this->tfb_->sendTransform(tmp_tf_stamped);
-            sent_first_transform_ = true;
+            if (tf_broadcast_ == true)
+            {
+                // We want to send a transform that is good up until a
+                // tolerance time so that odom can be used
+                ros::Time transform_expiration = (laser_scan->header.stamp +
+                                                  transform_tolerance_);
+                tf::StampedTransform tmp_tf_stamped(latest_tf_.inverse(),
+                                                    transform_expiration,
+                                                    global_frame_id_, odom_frame_id_);
+                this->tfb_->sendTransform(tmp_tf_stamped);
+                sent_first_transform_ = true;
+            }
         }
         else
         {
@@ -1865,15 +1950,17 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
     }
     else if(latest_tf_valid_)
     {
-        // Nothing changed, so we'll just republish the last transform, to keep
-        // everybody happy.
-        ros::Time transform_expiration = (laser_scan->header.stamp +
-                                          transform_tolerance_);
-        tf::StampedTransform tmp_tf_stamped(latest_tf_.inverse(),
-                                            transform_expiration,
-                                            global_frame_id_, odom_frame_id_);
-        this->tfb_->sendTransform(tmp_tf_stamped);
-
+        if (tf_broadcast_ == true)
+        {
+            // Nothing changed, so we'll just republish the last transform, to keep
+            // everybody happy.
+            ros::Time transform_expiration = (laser_scan->header.stamp +
+                                              transform_tolerance_);
+            tf::StampedTransform tmp_tf_stamped(latest_tf_.inverse(),
+                                                transform_expiration,
+                                                global_frame_id_, odom_frame_id_);
+            this->tfb_->sendTransform(tmp_tf_stamped);
+        }
 
         // Is it time to save our last pose to the param server
         ros::Time now = ros::Time::now();
@@ -1902,31 +1989,32 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
 
 }
 
-
 double
 AmclNode::getYaw(tf::Pose& t)
 {
     double yaw, pitch, roll;
-    tf::Matrix3x3 mat = t.getBasis();
-    mat.getEulerYPR(yaw,pitch,roll);
+    t.getBasis().getEulerYPR(yaw,pitch,roll);
     return yaw;
-}
-
-void
-AmclNode::initialPoseReceivedOld(const geometry_msgs::PoseWithCovarianceStampedConstPtr& msg)
-{
-    // Support old behavior, where null frame ids were accepted.
-    if(msg->header.frame_id == "")
-    {
-        ROS_WARN("Received initialpose message with header.frame_id == "".  This behavior is deprecated; you should always set the frame_id");
-        initialPoseReceived(msg);
-    }
 }
 
 void
 AmclNode::initialPoseReceived(const geometry_msgs::PoseWithCovarianceStampedConstPtr& msg)
 {
     boost::recursive_mutex::scoped_lock prl(configuration_mutex_);
+    if(msg->header.frame_id == "")
+    {
+        // This should be removed at some point
+        ROS_WARN("Received initial pose with empty frame_id.  You should always supply a frame_id.");
+    }
+    // We only accept initial pose estimates in the global frame, #5148.
+    else if(tf_->resolve(msg->header.frame_id) != tf_->resolve(global_frame_id_))
+    {
+        ROS_WARN("Ignoring initial pose in frame \"%s\"; initial poses must be in the global frame, \"%s\"",
+                 msg->header.frame_id.c_str(),
+                 global_frame_id_.c_str());
+        return;
+    }
+
     // In case the client sent us a pose estimate in the past, integrate the
     // intervening odometric change.
     tf::StampedTransform tx_odom;
@@ -1950,6 +2038,8 @@ AmclNode::initialPoseReceived(const geometry_msgs::PoseWithCovarianceStampedCons
     tf::Pose pose_old, pose_new;
     tf::poseMsgToTF(msg->pose.pose, pose_old);
     pose_new = tx_odom.inverse() * pose_old;
+
+    // Transform into the global frame
 
     ROS_INFO("Setting pose (%.6f): %.3f %.3f %.3f",
              ros::Time::now().toSec(),
@@ -2021,8 +2111,8 @@ AmclNode::log_data(geometry_msgs::PoseWithCovarianceStamped pose_bestEstimate){
                                                           (pose_bestEstimate.pose.pose.position.y- true_pose_normal.v[1])
                                                           *(pose_bestEstimate.pose.pose.position.y- true_pose_normal.v[1])
                                                           );
-
 */
+
 
 
 
@@ -2083,4 +2173,3 @@ AmclNode::log_data(geometry_msgs::PoseWithCovarianceStamped pose_bestEstimate){
 
 
 }
-
