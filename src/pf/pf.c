@@ -807,7 +807,7 @@ void pf_update_resample(pf_t *pf, double landmark_r, double landmark_phi, double
     }
 
     // Re-compute cluster statistics
-    pf_cluster_stats(set_b);
+    pf_cluster_stats(pf, set_b);
 
     // Use the newly created sample set
     pf->current_set = (pf->current_set + 1) % 2;
@@ -1021,7 +1021,7 @@ void pf_update_nested_resample(pf_t *pf, double landmark_r, double landmark_phi,
     }
 
     // Re-compute cluster statistics
-    pf_cluster_stats(set_b);
+    pf_cluster_stats(pf, set_b);
 
     // Use the newly created sample set
     pf->current_set = (pf->current_set + 1) % 2;
