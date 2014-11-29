@@ -44,14 +44,14 @@ typedef enum
 // Laser sensor data
 class AMCLLaserData : public AMCLSensorData
 {
-  public:
+    public:
     AMCLLaserData () {ranges=NULL;};
     virtual ~AMCLLaserData() {delete [] ranges;};
-  // Laser range data (range, bearing tuples)
-  public: int range_count;
-  public: double range_max;
-  //public: double (*ranges)[2];//@KPM modifying this to include information of whether colors match
-  public: double (*ranges)[3];  // ...now it has one more place for colors
+    // Laser range data (range, bearing tuples)
+    public: int range_count;
+    public: double range_max;
+    //public: double (*ranges)[2];//@KPM modifying this to include information of whether colors match
+    public: double (*ranges)[3];  // ...now it has one more place for colors
 
     //@KPM: adding these to allow transferring observed location of opponent robot to the weighting function
     public: double landmark_r;
@@ -82,20 +82,20 @@ class AMCLLaser : public AMCLSensor
                                        double z_rand,
                                        double sigma_hit,
                                        double max_occ_dist);
-
+  
   // Update the filter based on the sensor model.  Returns true if the
   // filter has been updated.
   public: virtual bool UpdateSensor(pf_t *pf, AMCLSensorData *data);
 
   // Set the laser's pose after construction
-  public: void SetLaserPose(pf_vector_t& laser_pose)
+  public: void SetLaserPose(pf_vector_t& laser_pose) 
           {this->laser_pose = laser_pose;}
 
   // Determine the probability for the given pose
-  private: static double BeamModel(AMCLLaserData *data,
+  private: static double BeamModel(AMCLLaserData *data, 
                                    pf_sample_set_t* set);
   // Determine the probability for the given pose
-  private: static double LikelihoodFieldModel(AMCLLaserData *data,
+  private: static double LikelihoodFieldModel(AMCLLaserData *data, 
                                               pf_sample_set_t* set);
 
 
@@ -112,12 +112,12 @@ class AMCLLaser : public AMCLSensor
   // The laser map
   private: map_t *map;
 
-   //@KPM: The color map
+  //@KPM: The color map
   private: map_t *color_map;
 
   // Laser offset relative to robot
   private: pf_vector_t laser_pose;
-
+  
   // Max beams to consider
   private: int max_beams;
 
