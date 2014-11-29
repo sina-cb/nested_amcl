@@ -39,8 +39,6 @@
 extern "C" {
 #endif
 
-
-
 // Forward declarations
 struct _pf_t;
 struct _rtk_fig_t;
@@ -54,21 +52,20 @@ typedef pf_vector_t (*pf_dual_model_fn_t) (void *init_data, double r, double the
 /***** KPM */
 
 
+
 // Function prototype for the initialization model; generates a sample pose from
 // an appropriate distribution.
 typedef pf_vector_t (*pf_init_model_fn_t) (void *init_data);
 
 // Function prototype for the action model; generates a sample pose from
 // an appropriate distribution
-typedef void (*pf_action_model_fn_t) (void *action_data,
+typedef void (*pf_action_model_fn_t) (void *action_data, 
                                       struct _pf_sample_set_t* set);
 
 // Function prototype for the sensor model; determines the probability
 // for the given set of sample poses.
-typedef double (*pf_sensor_model_fn_t) (void *sensor_data,
+typedef double (*pf_sensor_model_fn_t) (void *sensor_data, 
                                         struct _pf_sample_set_t* set);
-
-
 
 
 // Information for a single sample
@@ -84,11 +81,11 @@ typedef struct
 
 
 
-
 // Function prototype for the nested sensor model; determines the probability
 // for the given set of sample poses of nested particles.
 typedef double (*pf_nested_sensor_model_fn_t) (pf_sample_t* upper_particle, void *sensor_data,
-                                        struct _pf_sample_set_t* set);
+                                               struct _pf_sample_set_t* set);
+
 
 
 // Information for a cluster of samples
@@ -180,6 +177,7 @@ typedef struct _pf_t
     void *random_pose_data;
 
 
+
     // There are two sets of particle filters per set of particles
     // Each set of pfs has one particle filter for every particle in current pf.
 
@@ -187,6 +185,7 @@ typedef struct _pf_t
     struct _pf_t *nested_pf_set_1;
 
     //struct _pf_t *nested_pf_sets[][2];
+
 
 
 
@@ -207,20 +206,19 @@ pf_t *pf_alloc(int min_samples, int max_samples,
 
 
 void pf_nested_alloc(pf_t* pf, int min_samples, int max_samples,
-               double alpha_slow, double alpha_fast,
-               pf_init_model_fn_t random_pose_fn,
-               pf_dual_model_fn_t dual_pose_fn, //Added by KPM
-               void *random_pose_data,
-               //Added by KPM
-               int nesting_level,
-               int min_nested_samples, int max_nested_samples
-               );
+                     double alpha_slow, double alpha_fast,
+                     pf_init_model_fn_t random_pose_fn,
+                     pf_dual_model_fn_t dual_pose_fn, //Added by KPM
+                     void *random_pose_data,
+                     //Added by KPM
+                     int nesting_level,
+                     int min_nested_samples, int max_nested_samples
+                     );
 
 
 
 // Free an existing filter
 void pf_free(pf_t *pf);
-
 
 //KPM: modifying to pass map
 // Initialize the filter using a guassian
@@ -237,7 +235,6 @@ void pf_update_sensor(pf_t *pf, pf_sensor_model_fn_t sensor_fn, void *sensor_dat
 
 // Update the nested filter with some new sensor observation
 void pf_update_nested_sensor(pf_t *pf, pf_sensor_model_fn_t sensor_fn, pf_nested_sensor_model_fn_t nested_sensor_fn, void *sensor_data);
-
 
 // Resample the distribution
 void pf_update_resample(pf_t *pf, double landmark_r, double landmark_phi, double landmark_x, double landmark_y); //KPM adding r and phi of landmark
@@ -274,6 +271,7 @@ pf_t* pf_get_this_nested_set(pf_t *pf, int current_set);
 pf_t* pf_get_other_nested_set(pf_t *pf, int current_set);
 
 void pf_set_this_nested_set(pf_t *pf, int current_set, pf_t *allocated_pf);
+
 
 #ifdef __cplusplus
 }

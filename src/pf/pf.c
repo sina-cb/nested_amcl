@@ -33,7 +33,6 @@
 #include "pf.h"
 #include "pf_pdf.h"
 #include "pf_kdtree.h"
-
 //#include "ros/ros.h"
 
 #define DUAL_MCL 1
@@ -43,7 +42,7 @@
 static int pf_resample_limit(pf_t *pf, int k);
 
 // Re-compute the cluster statistics for a sample set
-static void pf_cluster_stats(pf_sample_set_t *set);
+static void pf_cluster_stats(pf_t *pf, pf_sample_set_t *set);
 
 // Copy one filter into another
 static void pf_copy(pf_t *pf_source, pf_t *pf_dest);
@@ -81,7 +80,6 @@ pf_t *pf_alloc(int min_samples, int max_samples,
     pf->dual_pose_fn = dual_pose_fn;
     pf->nesting_lvl = nesting_level;
     pf->isNested = 0;
-
 
     pf->min_samples = min_samples;
     pf->max_samples = max_samples;
@@ -168,7 +166,6 @@ pf_t *pf_alloc(int min_samples, int max_samples,
 
     return pf;
 }
-
 
 
 
@@ -355,8 +352,7 @@ void pf_init(pf_t *pf, pf_vector_t mean, pf_matrix_t cov, map_t* map)
     set->sample_count = pf->max_samples;
 
     pdf = pf_pdf_gaussian_alloc(mean, cov);
-
-
+    
     // Compute the new sample poses
     for (i = 0; i < set->sample_count; i++)
     {
@@ -377,7 +373,7 @@ void pf_init(pf_t *pf, pf_vector_t mean, pf_matrix_t cov, map_t* map)
                 sample_y = MAP_GYWY(map, sample->pose.v[1]);
 
             }while( ( !MAP_VALID(map, sample_x, sample_y)
-                  || (map->cells[MAP_INDEX(map, sample_x, sample_y)].occ_state > -1) ));
+                      || (map->cells[MAP_INDEX(map, sample_x, sample_y)].occ_state > -1) ));
 
         }
 
@@ -389,8 +385,6 @@ void pf_init(pf_t *pf, pf_vector_t mean, pf_matrix_t cov, map_t* map)
         // no covariance ...directly initialize all particles to the exact pose specified by user (or initial pose)
         //sample->pose = mean;
 
-
-
         // Add sample to histogram
         pf_kdtree_insert(set->kdtree, sample->pose, sample->weight);
     }
@@ -398,9 +392,10 @@ void pf_init(pf_t *pf, pf_vector_t mean, pf_matrix_t cov, map_t* map)
     pf->w_slow = pf->w_fast = 0.0;
 
     pf_pdf_gaussian_free(pdf);
-
+    
     // Re-compute cluster statistics
-    pf_cluster_stats(set);
+    pf_cluster_stats(pf, set);
+
 
 
     // Initializing all the lower level filters with the exact same parameters as the current one
@@ -448,7 +443,7 @@ void pf_init_model(pf_t *pf, pf_init_model_fn_t init_fn, void *init_data)
     pf->w_slow = pf->w_fast = 0.0;
 
     // Re-compute cluster statistics
-    pf_cluster_stats(set);
+    pf_cluster_stats(pf, set);
 
     return;
 }
@@ -484,42 +479,42 @@ void pf_update_sensor(pf_t *pf, pf_sensor_model_fn_t sensor_fn, void *sensor_dat
     normalize_weights(total, pf);
     /*
 
-    if (total > 0.0)
-    {
-        // Normalize weights
-        double w_avg=0.0;
-        for (i = 0; i < set->sample_count; i++)
+        if (total > 0.0)
         {
-            sample = set->samples + i;
-            w_avg += sample->weight;
-            sample->weight /= total;
+            // Normalize weights
+            double w_avg=0.0;
+            for (i = 0; i < set->sample_count; i++)
+            {
+                sample = set->samples + i;
+                w_avg += sample->weight;
+                sample->weight /= total;
+            }
+            // Update running averages of likelihood of samples (Prob Rob p258)
+           w_avg /= set->sample_count;
+            if(pf->w_slow == 0.0)
+                pf->w_slow = w_avg;
+            else
+                pf->w_slow += pf->alpha_slow * (w_avg - pf->w_slow);
+            if(pf->w_fast == 0.0)
+                pf->w_fast = w_avg;
+            else
+                pf->w_fast += pf->alpha_fast * (w_avg - pf->w_fast);
+            //printf("w_avg: %e slow: %e fast: %e\n",
+            //w_avg, pf->w_slow, pf->w_fast);
         }
-        // Update running averages of likelihood of samples (Prob Rob p258)
-        w_avg /= set->sample_count;
-        if(pf->w_slow == 0.0)
-            pf->w_slow = w_avg;
         else
-            pf->w_slow += pf->alpha_slow * (w_avg - pf->w_slow);
-        if(pf->w_fast == 0.0)
-            pf->w_fast = w_avg;
-        else
-            pf->w_fast += pf->alpha_fast * (w_avg - pf->w_fast);
-        //printf("w_avg: %e slow: %e fast: %e\n",
-        //w_avg, pf->w_slow, pf->w_fast);
-    }
-    else
-    {
-        //PLAYER_WARN("pdf has zero probability");
-
-        // Handle zero total
-        for (i = 0; i < set->sample_count; i++)
         {
-            sample = set->samples + i;
-            sample->weight = 1.0 / set->sample_count;
-        }
-    }
+            //PLAYER_WARN("pdf has zero probability");
 
-    */
+            // Handle zero total
+            for (i = 0; i < set->sample_count; i++)
+            {
+                sample = set->samples + i;
+                sample->weight = 1.0 / set->sample_count;
+            }
+        }
+
+        */
 
     return;
 }
@@ -610,9 +605,6 @@ static void normalize_weights(double total, pf_t* pf){
         }
     }
 }
-
-
-
 
 
 // Resample the distribution
@@ -885,11 +877,11 @@ void pf_update_nested_resample(pf_t *pf, double landmark_r, double landmark_phi,
 
         if( (pf->isNested != 0) && drand48() < 0.05 && (landmark_r > 0)){
             //if( (DUAL_MCL == 1) ){
-                //KPM..this is the original random sampling function
-                //sample_b->pose = (pf->random_pose_fn)(pf->random_pose_data);
+            //KPM..this is the original random sampling function
+            //sample_b->pose = (pf->random_pose_fn)(pf->random_pose_data);
 
-                //KPM ...trying dual sampling instead of random sampling
-                sample_b->pose = nested_dual_fn(pf->random_pose_data, landmark_r, landmark_phi, upper_particle_pose);
+            //KPM ...trying dual sampling instead of random sampling
+            sample_b->pose = nested_dual_fn(pf->random_pose_data, landmark_r, landmark_phi, upper_particle_pose);
 
             //}
             /*
@@ -983,7 +975,6 @@ void pf_update_nested_resample(pf_t *pf, double landmark_r, double landmark_phi,
 
         // Add sample to histogram
         pf_kdtree_insert(set_b->kdtree, sample_b->pose, sample_b->weight);
-
     }
 
 
@@ -1045,6 +1036,7 @@ void pf_update_nested_resample(pf_t *pf, double landmark_r, double landmark_phi,
 
 
 
+
 // Compute the required number of samples, given that there are k bins
 // with samples in them.  This is taken directly from Fox et al.
 int pf_resample_limit(pf_t *pf, int k)
@@ -1064,7 +1056,6 @@ int pf_resample_limit(pf_t *pf, int k)
         }
     }
 
-
     a = 1;
     b = 2 / (9 * ((double) k - 1));
     c = sqrt(2 / (9 * ((double) k - 1))) * pf->pop_z;
@@ -1082,7 +1073,7 @@ int pf_resample_limit(pf_t *pf, int k)
 
 
 // Re-compute the cluster statistics for a sample set
-void pf_cluster_stats(pf_sample_set_t *set)
+void pf_cluster_stats(pf_t *pf, pf_sample_set_t *set)
 {
     int i, j, k, cidx;
     pf_sample_t *sample;
@@ -1172,7 +1163,7 @@ void pf_cluster_stats(pf_sample_set_t *set)
     for (i = 0; i < set->cluster_count; i++)
     {
         cluster = set->clusters + i;
-
+        
         cluster->mean.v[0] = cluster->m[0] / cluster->weight;
         cluster->mean.v[1] = cluster->m[1] / cluster->weight;
         cluster->mean.v[2] = atan2(cluster->m[3], cluster->m[2]);
@@ -1268,6 +1259,10 @@ int pf_get_cluster_stats(pf_t *pf, int clabel, double *weight,
 
     return 1;
 }
+
+
+
+
 
 // resampling from the Dual for nested particles
 pf_vector_t nested_dual_fn(void* arg, double landmark_r, double landmark_phi, pf_vector_t upper_particle_pose){
@@ -1474,5 +1469,3 @@ void pf_set_this_nested_set(pf_t *pf, int current_set, pf_t *allocated_pf){
         pf->nested_pf_set_1 = allocated_pf;
     }
 }
-
-
