@@ -518,6 +518,16 @@ AmclNode::AmclNode() :
 
 
 
+    occlusion_proportion = 0.0;
+
+    true_pose_normal.v[0] = 0.0;
+    true_pose_normal.v[1] = 0.0;
+    true_pose_normal.v[2] = 0.0;
+
+    true_pose_nested.v[0] = 0.0;
+    true_pose_nested.v[1] = 0.0;
+    true_pose_nested.v[2] = 0.0;
+
 
     /* **** End of Data collection related stuff **** */
 
