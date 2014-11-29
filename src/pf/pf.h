@@ -68,6 +68,13 @@ typedef double (*pf_sensor_model_fn_t) (void *sensor_data,
                                         struct _pf_sample_set_t* set);
 
 
+// Function prototype for the sensor model with advanced weighting; determines the probability
+// for the given set of sample poses.
+typedef double (*pf_sensor_AW_model_fn_t) (void *sensor_data,
+                                           struct _pf_sample_set_t* set, struct _pf_t * nested_pf_set);
+
+
+
 // Information for a single sample
 typedef struct
 {
@@ -76,6 +83,9 @@ typedef struct
 
     // Weight for this pose
     double weight;
+
+    // Non-Normalized weight for this pose
+    double non_normalized_weight;
 
 } pf_sample_t;
 
@@ -174,6 +184,7 @@ typedef struct _pf_t
     pf_init_model_fn_t random_pose_fn;
     pf_dual_model_fn_t dual_pose_fn;
 
+    // this is the map actually
     void *random_pose_data;
 
 
@@ -234,7 +245,8 @@ void pf_update_action(pf_t *pf, pf_action_model_fn_t action_fn, void *action_dat
 void pf_update_sensor(pf_t *pf, pf_sensor_model_fn_t sensor_fn, void *sensor_data);
 
 // Update the nested filter with some new sensor observation
-void pf_update_nested_sensor(pf_t *pf, pf_sensor_model_fn_t sensor_fn, pf_nested_sensor_model_fn_t nested_sensor_fn, void *sensor_data);
+void pf_update_nested_sensor(pf_t *pf, pf_sensor_AW_model_fn_t sensor_fn, pf_nested_sensor_model_fn_t nested_sensor_fn, void *sensor_data);
+
 
 // Resample the distribution
 void pf_update_resample(pf_t *pf, double landmark_r, double landmark_phi, double landmark_x, double landmark_y); //KPM adding r and phi of landmark
@@ -243,6 +255,9 @@ void pf_update_resample(pf_t *pf, double landmark_r, double landmark_phi, double
 // Resample the nested distribution
 void pf_update_nested_resample(pf_t *pf, double landmark_r, double landmark_phi, pf_vector_t upper_particle_pose);
 
+/** Adaptive Nested Resampler **/
+// Resample the nested distribution with changes in particle count
+void pf_update_nested_adaptive_resample(pf_t *pf, double landmark_r, double landmark_phi, pf_vector_t upper_particle_pose);
 
 // Compute the CEP statistics (mean and variance).
 void pf_get_cep_stats(pf_t *pf, pf_vector_t *mean, double *var);
