@@ -175,6 +175,7 @@ private:
     bool sent_first_transform_;
 
     tf::Transform latest_tf_;
+    tf::Transform latest_tf_true;
     bool latest_tf_valid_;
 
     // Pose-generating function used to uniformly distribute particles over
@@ -269,6 +270,7 @@ private:
     ros::NodeHandle nh_;
     ros::NodeHandle private_nh_;
     ros::Publisher pose_pub_;
+    ros::Publisher true_pose_pub_;
     ros::Publisher particlecloud_pub_;
 
     ros::Publisher nested_particlecloud_pub_; // For publishing cloud of nested particles
@@ -566,6 +568,7 @@ AmclNode::AmclNode() :
     /**** Publishers and Subscribers ****/
 
     pose_pub_ = nh_.advertise<geometry_msgs::PoseWithCovarianceStamped>("amcl_pose", 2);
+    true_pose_pub_ = nh_.advertise<geometry_msgs::PoseStamped>("true_pose", 2);
     particlecloud_pub_ = nh_.advertise<geometry_msgs::PoseArray>("particlecloud", 2);
     nested_particlecloud_pub_ = nh_.advertise<geometry_msgs::PoseArray>("nested_particlecloud", 2);
 
@@ -1770,9 +1773,21 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
             // Fill in the header
             p.header.frame_id = global_frame_id_;
             p.header.stamp = laser_scan->header.stamp;
+
+
             // Copy in the pose
+
+
+
+            /* Best estimate of pose by amcl -- this is the actual AMCL pose we need */
             p.pose.pose.position.x = hyps[max_weight_hyp].pf_pose_mean.v[0];
             p.pose.pose.position.y = hyps[max_weight_hyp].pf_pose_mean.v[1];
+
+            /* Using TRUE POSE for the moment to capture videos...TURN THIS OFF for actual experiments */
+            //p.pose.pose.position.x = true_pose_normal.v[0];
+            //p.pose.pose.position.y = true_pose_normal.v[1];
+
+
             tf::quaternionTFToMsg(tf::createQuaternionFromYaw(hyps[max_weight_hyp].pf_pose_mean.v[2]),
                                   p.pose.pose.orientation);
             // Copy in the covariance, converting from 3-D to 6-D
@@ -1810,6 +1825,36 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
             // Data Collection method
             log_data(p);
 
+
+            ///////////////////////Sending true pose
+
+
+//            true_pose = true_pose_normal.v[0];
+//            true_pose.position.y = true_pose_normal.v[1];
+//            tf::quaternionTFToMsg(tf::createQuaternionFromYaw(hyps[max_weight_hyp].pf_pose_mean.v[2]),
+//                                  true_pose.orientation);
+
+            geometry_msgs::PoseStamped true_pose;
+            true_pose.header.frame_id = global_frame_id_;
+            true_pose.header.stamp = laser_scan->header.stamp + transform_tolerance_;
+
+            true_pose.pose.position.x = true_pose_normal.v[0]+0.0;
+            true_pose.pose.position.y = true_pose_normal.v[1]-0.0;
+            true_pose.pose.position.z = 0.0;
+
+            tf::quaternionTFToMsg(tf::createQuaternionFromYaw(hyps[max_weight_hyp].pf_pose_mean.v[2]),
+                                  true_pose.pose.orientation);
+
+//            true_pose.pose.orientation.x = 0.0;
+//            true_pose.pose.orientation.y = 0.0;
+//            true_pose.pose.orientation.z = hyps[max_weight_hyp].pf_pose_mean.v[2];
+//            true_pose.pose.orientation.w = 0.0;
+
+            true_pose_pub_.publish(true_pose);
+
+
+
+
             ROS_DEBUG("New pose: %6.3f %6.3f %6.3f",
                       hyps[max_weight_hyp].pf_pose_mean.v[0],
                       hyps[max_weight_hyp].pf_pose_mean.v[1],
@@ -1817,18 +1862,45 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
 
             // subtracting base to odom from map to base and send map to odom instead
             tf::Stamped<tf::Pose> odom_to_map;
+            tf::Stamped<tf::Pose> odom_to_map_true;
             try
             {
+
+                /* !!!!!
+                   This is the actual ODOM Pose that needs to be published by AMCL.
+                   Turning this off for the moment to get videos.
+                   This this back on when doing actual experiments!!!
+                */
+
                 tf::Transform tmp_tf(tf::createQuaternionFromYaw(hyps[max_weight_hyp].pf_pose_mean.v[2]),
                                      tf::Vector3(hyps[max_weight_hyp].pf_pose_mean.v[0],
                                                  hyps[max_weight_hyp].pf_pose_mean.v[1],
                                                  0.0));
+
+                tf::Transform tmp_tf_true(tf::createQuaternionFromYaw(hyps[max_weight_hyp].pf_pose_mean.v[2]-0.02),
+                                     tf::Vector3(true_pose_normal.v[0]-0.8,
+                                                 true_pose_normal.v[1]-0.0,
+                                                 0.0));
+
+
+
                 tf::Stamped<tf::Pose> tmp_tf_stamped (tmp_tf.inverse(),
                                                       laser_scan->header.stamp,
                                                       base_frame_id_);
+
+                tf::Stamped<tf::Pose> tmp_tf_stamped_true (tmp_tf_true.inverse(),
+                                                      laser_scan->header.stamp,
+                                                           "/robot1_tf_true/base_link");
+
+
+
                 this->tf_->transformPose(odom_frame_id_,
                                          tmp_tf_stamped,
                                          odom_to_map);
+
+                this->tf_->transformPose("/robot1_tf_true/odom",
+                                         tmp_tf_stamped_true,
+                                         odom_to_map_true);
             }
             catch(tf::TransformException)
             {
@@ -1836,19 +1908,38 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
                 return;
             }
 
+
             latest_tf_ = tf::Transform(tf::Quaternion(odom_to_map.getRotation()),
                                        tf::Point(odom_to_map.getOrigin()));
+
+            latest_tf_true = tf::Transform(tf::Quaternion(odom_to_map_true.getRotation()),
+                                       tf::Point(odom_to_map_true.getOrigin()));
+
+
+
             latest_tf_valid_ = true;
 
             // We want to send a transform that is good up until a
             // tolerance time so that odom can be used
             ros::Time transform_expiration = (laser_scan->header.stamp +
                                               transform_tolerance_);
+
             tf::StampedTransform tmp_tf_stamped(latest_tf_.inverse(),
                                                 transform_expiration,
                                                 global_frame_id_, odom_frame_id_);
+
+            tf::StampedTransform tmp_tf_stamped_true(latest_tf_true.inverse(),
+                                                transform_expiration,
+                                                     "/map", "/robot1_tf_true/odom");
+
+
+
+
             this->tfb_->sendTransform(tmp_tf_stamped);
+            this->tfb_->sendTransform(tmp_tf_stamped_true);
+
             sent_first_transform_ = true;
+
         }
         else
         {
