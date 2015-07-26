@@ -175,6 +175,8 @@ private:
     bool sent_first_transform_;
 
     tf::Transform latest_tf_;
+    tf::Transform latest_tf_true;
+
     bool latest_tf_valid_;
 
     // Pose-generating function used to uniformly distribute particles over
@@ -1815,38 +1817,84 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
                       hyps[max_weight_hyp].pf_pose_mean.v[2]);
 
             // subtracting base to odom from map to base and send map to odom instead
-            tf::Stamped<tf::Pose> odom_to_map;
-            try
-            {
-                tf::Transform tmp_tf(tf::createQuaternionFromYaw(hyps[max_weight_hyp].pf_pose_mean.v[2]),
-                                     tf::Vector3(hyps[max_weight_hyp].pf_pose_mean.v[0],
-                                                 hyps[max_weight_hyp].pf_pose_mean.v[1],
-                                                 0.0));
-                tf::Stamped<tf::Pose> tmp_tf_stamped (tmp_tf.inverse(),
-                                                      laser_scan->header.stamp,
-                                                      base_frame_id_);
-                this->tf_->transformPose(odom_frame_id_,
-                                         tmp_tf_stamped,
-                                         odom_to_map);
-            }
-            catch(tf::TransformException)
-            {
-                ROS_DEBUG("Failed to subtract base to odom transform");
-                return;
-            }
+                        tf::Stamped<tf::Pose> odom_to_map;
+                        tf::Stamped<tf::Pose> odom_to_map_true;
+                        try
+                        {
 
-            latest_tf_ = tf::Transform(tf::Quaternion(odom_to_map.getRotation()),
-                                       tf::Point(odom_to_map.getOrigin()));
-            latest_tf_valid_ = true;
+                            /* !!!!!
+                               This is the actual ODOM Pose that needs to be published by AMCL.
+                               Turning this off for the moment to get videos.
+                               This this back on when doing actual experiments!!!
+                            */
 
-            // We want to send a transform that is good up until a
-            // tolerance time so that odom can be used
-            ros::Time transform_expiration = (laser_scan->header.stamp +
-                                              transform_tolerance_);
-            tf::StampedTransform tmp_tf_stamped(latest_tf_.inverse(),
-                                                transform_expiration,
-                                                global_frame_id_, odom_frame_id_);
-            this->tfb_->sendTransform(tmp_tf_stamped);
+                            tf::Transform tmp_tf(tf::createQuaternionFromYaw(hyps[max_weight_hyp].pf_pose_mean.v[2]),
+                                                 tf::Vector3(hyps[max_weight_hyp].pf_pose_mean.v[0],
+                                                             hyps[max_weight_hyp].pf_pose_mean.v[1],
+                                                             0.0));
+
+                            tf::Transform tmp_tf_true(tf::createQuaternionFromYaw(hyps[max_weight_hyp].pf_pose_mean.v[2]-0.02),
+                                                 tf::Vector3(true_pose_normal.v[0]-0.8,
+                                                             true_pose_normal.v[1]-0.0,
+                                                             0.0));
+
+
+
+                            tf::Stamped<tf::Pose> tmp_tf_stamped (tmp_tf.inverse(),
+                                                                  laser_scan->header.stamp,
+                                                                  base_frame_id_);
+
+                            tf::Stamped<tf::Pose> tmp_tf_stamped_true (tmp_tf_true.inverse(),
+                                                                  laser_scan->header.stamp,
+                                                                       "/robot1_tf_true/base_link");
+
+
+
+                            this->tf_->transformPose(odom_frame_id_,
+                                                     tmp_tf_stamped,
+                                                     odom_to_map);
+
+                            this->tf_->transformPose("/robot1_tf_true/odom",
+                                                     tmp_tf_stamped_true,
+                                                     odom_to_map_true);
+                        }
+                        catch(tf::TransformException)
+                        {
+                            ROS_DEBUG("Failed to subtract base to odom transform");
+                            return;
+                        }
+
+
+                        latest_tf_ = tf::Transform(tf::Quaternion(odom_to_map.getRotation()),
+                                                   tf::Point(odom_to_map.getOrigin()));
+
+                        latest_tf_true = tf::Transform(tf::Quaternion(odom_to_map_true.getRotation()),
+                                                   tf::Point(odom_to_map_true.getOrigin()));
+
+
+
+                        latest_tf_valid_ = true;
+
+                        // We want to send a transform that is good up until a
+                        // tolerance time so that odom can be used
+                        ros::Time transform_expiration = (laser_scan->header.stamp +
+                                                          transform_tolerance_);
+
+                        tf::StampedTransform tmp_tf_stamped(latest_tf_.inverse(),
+                                                            transform_expiration,
+                                                            global_frame_id_, odom_frame_id_);
+
+                        tf::StampedTransform tmp_tf_stamped_true(latest_tf_true.inverse(),
+                                                            transform_expiration,
+                                                                 "/map", "/robot1_tf_true/odom");
+
+
+
+
+                        this->tfb_->sendTransform(tmp_tf_stamped);
+                        this->tfb_->sendTransform(tmp_tf_stamped_true);
+
+
             sent_first_transform_ = true;
         }
         else
