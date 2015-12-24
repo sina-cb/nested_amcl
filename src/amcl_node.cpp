@@ -53,6 +53,7 @@
 #include "tf/transform_broadcaster.h"
 #include "tf/transform_listener.h"
 #include "tf/message_filter.h"
+#include "tf/transform_datatypes.h"
 #include "message_filters/subscriber.h"
 
 // Dynamic_reconfigure
@@ -392,7 +393,7 @@ AmclNode::AmclNode() :
 
     private_nh_.param("min_nested_particles", min_nested_particles_, 1);
     private_nh_.param("max_nested_particles", max_nested_particles_, 1);
-    private_nh_.param("nesting_lvl", nesting_lvl_, 0);
+    private_nh_.param("nesting_lvl", nesting_lvl_, 1);
 
     private_nh_.param("kld_err", pf_err_, 0.05);
     private_nh_.param("kld_z", pf_z_, 0.99);
@@ -965,8 +966,8 @@ AmclNode::getOdomPose(tf::Stamped<tf::Pose>& odom_pose,
                       const ros::Time& t, const std::string& f)
 {
     // Get the robot's pose
-    tf::Stamped<tf::Pose> ident (btTransform(tf::createIdentityQuaternion(),
-                                             btVector3(0,0,0)), t, f);
+    tf::Stamped<tf::Pose> ident (tf::Transform(tf::createIdentityQuaternion(),
+                                             tf::Vector3(0,0,0)), t, f);
     try
     {
         this->tf_->transformPose(odom_frame_id_, ident, odom_pose);
@@ -1204,8 +1205,8 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
         //
         // In short, we are creating a new frame for the laser and initializing the location of
         // the laser within that frame at (0,0,0,0) and current time.
-        tf::Stamped<tf::Pose> ident (btTransform(tf::createIdentityQuaternion(),
-                                                 btVector3(0,0,0)),
+        tf::Stamped<tf::Pose> ident (tf::Transform(tf::createIdentityQuaternion(),
+                                                 tf::Vector3(0,0,0)),
                                      ros::Time(), laser_scan->header.frame_id);
         tf::Stamped<tf::Pose> laser_pose;
         try
@@ -1580,7 +1581,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
         for(int i=0;i<set->sample_count;i++)
         {
             tf::poseTFToMsg(tf::Pose(tf::createQuaternionFromYaw(set->samples[i].pose.v[2]),
-                                     btVector3(set->samples[i].pose.v[0],
+                                     tf::Vector3(set->samples[i].pose.v[0],
                                                set->samples[i].pose.v[1], 0)),
                             cloud_msg.poses[i]);
 
@@ -1641,7 +1642,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
                 for(int j=0;j<nested_particles_set->sample_count;j++)
                 {
                     tf::poseTFToMsg(tf::Pose(tf::createQuaternionFromYaw(nested_particles_set->samples[j].pose.v[2]),
-                                             btVector3(nested_particles_set->samples[j].pose.v[0],
+                                             tf::Vector3(nested_particles_set->samples[j].pose.v[0],
                                                        nested_particles_set->samples[j].pose.v[1], 0)),
                                     nested_cloud_msg.poses[curr_total_nested_particle_count++]);
 
@@ -1990,8 +1991,7 @@ double
 AmclNode::getYaw(tf::Pose& t)
 {
     double yaw, pitch, roll;
-    btMatrix3x3 mat = t.getBasis();
-    mat.getEulerYPR(yaw,pitch,roll);
+    t.getBasis().getEulerYPR(yaw, pitch, roll);
     return yaw;
 }
 
