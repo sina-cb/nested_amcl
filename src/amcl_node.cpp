@@ -615,8 +615,6 @@ AmclNode::AmclNode() :
         color_angles[i] = false;
     }
 
-    ROS_ERROR("End of constructor");
-
 }
 
 void AmclNode::reconfigureCB(AMCLConfig &config, uint32_t level)
@@ -866,8 +864,6 @@ AmclNode::handleMapMessage(const nav_msgs::OccupancyGrid& msg)
     // In case the initial pose message arrived before the first map,
     // try to apply the initial pose now that the map has arrived.
     applyInitialPose();
-
-    ROS_ERROR("End of Map handleMapMessage");
 }
 
 void
