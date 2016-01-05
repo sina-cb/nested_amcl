@@ -552,9 +552,7 @@ void pf_update_nested_sensor(pf_t *pf,
     total = (*sensor_fn) (sensor_data, set, nested_pf_set);
 
     normalize_weights(total, pf);
-
-
-
+    
     return;
 }
 

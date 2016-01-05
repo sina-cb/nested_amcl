@@ -39,6 +39,7 @@
 
 // roscpp
 #include "ros/ros.h"
+#include <ros/console.h>
 
 // Messages that I need
 #include "sensor_msgs/LaserScan.h"
@@ -321,10 +322,6 @@ private:
 
 
     /* *** */
-
-
-
-
     void reconfigureCB(amcl::AMCLConfig &config, uint32_t level);
 };
 
@@ -335,6 +332,10 @@ std::vector<std::pair<int,int> > AmclNode::free_space_indices;
 int
 main(int argc, char** argv)
 {
+	// if( ros::console::set_logger_level(ROSCONSOLE_DEFAULT_NAME, ros::console::levels::Debug) ) {
+ //   		ros::console::notifyLoggerLevelsChanged();
+	// }
+
     ros::init(argc, argv, "nested_amcl");
     ros::NodeHandle nh;
 
@@ -1081,10 +1082,6 @@ AmclNode::dualMCL_PoseGenerator(void* arg, double landmark_r, double landmark_ph
 }
 
 
-
-
-
-
 bool
 AmclNode::globalLocalizationCallback(std_srvs::Empty::Request& req,
                                      std_srvs::Empty::Response& res)
@@ -1168,7 +1165,7 @@ AmclNode::colorReceived(const cmvision::BlobsConstPtr &Blobs){
         AmclNode::color_angles[i++] = false;
     }
 
-    occlusion_proportion = color_count/640.0;
+    occlusion_proportion = color_count / 640.0;
 
     return;
 
@@ -1187,6 +1184,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
     // Do we have the base->base_laser Tx (transform) yet?
     if(frame_to_laser_.find(laser_scan->header.frame_id) == frame_to_laser_.end())
     {
+    	ROS_ERROR("SINA: Here 1");
         ROS_DEBUG("Setting up laser %d (frame_id=%s)\n", (int)frame_to_laser_.size(), laser_scan->header.frame_id.c_str());
         lasers_.push_back(new AMCLLaser(*laser_));
         lasers_update_.push_back(true);
@@ -1473,7 +1471,6 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
             color_index_floor = (int) floor( ((i*angle_increment)+difference_in_min_angles)/RADIANS_PER_PIXEL);
 
             if( (color_index_floor >= 0) && (color_index_floor <= 639) ){ //checks to see if colour has been detected at all
-
                 if(AmclNode::color_angles[color_index_floor]
                         || AmclNode::color_angles[color_index_floor+1]){
                     ldata.ranges[i][2] = 50;
@@ -1491,9 +1488,9 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
                         }
                     }
                     else{
-                        temp_landmark_r += ldata.ranges[i][0];
-                        landmark_r_distances[blob_ray_count] = ldata.ranges[i][0];
-                        blob_ray_count++;
+                    	temp_landmark_r += ldata.ranges[i][0];
+                    	landmark_r_distances[blob_ray_count] = ldata.ranges[i][0];
+                    	blob_ray_count++;
                     }
 
 
@@ -1502,7 +1499,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
 
                 }
                 else{
-                    if(temp_landmark_r >0){
+                    if(temp_landmark_r > 0){
                         //landmark_r = temp_landmark_r/blob_ray_count;
                         landmark_phi = temp_landmark_phi/blob_ray_count;
 
@@ -1525,7 +1522,6 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
             }
             else{
                 ldata.ranges[i][2] = 0;
-
                 // temp_landmark_r = 0;
                 // temp_landmark_phi = 0;
                 // blob_ray_count = 0;
@@ -1538,9 +1534,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
         /**
           Notes for me:
           UpdateSensor function calculates the weights for the samples from the sensor readings.
-
-
-          */
+        */
 
         lasers_[laser_index]->UpdateSensor(pf_, (AMCLSensorData*)&ldata);
 
