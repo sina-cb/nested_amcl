@@ -302,6 +302,11 @@ private:
     odom_model_t odom_model_type_;
     double init_pose_[3];
     double init_cov_[3];
+
+    //SINA: Initial guess for the leader location
+    double init_leader_pose_[3];
+    double init_leader_cov_[3];
+
     laser_model_t laser_model_type_;
 
     //KPM: landmark location
@@ -544,6 +549,13 @@ AmclNode::AmclNode() :
     private_nh_.param("initial_cov_yy", init_cov_[1], 0.5 * 0.5);
     private_nh_.param("initial_cov_aa", init_cov_[2], (M_PI/12.0) * (M_PI/12.0));
 
+    private_nh_.param("initial_leader_pose_x", init_leader_pose_[0], 0.0);
+    private_nh_.param("initial_leader_pose_y", init_leader_pose_[1], 0.0);
+    private_nh_.param("initial_leader_pose_a", init_leader_pose_[2], 0.0);
+    private_nh_.param("initial_leader_cov_xx", init_leader_cov_[0], 0.5 * 0.5);
+    private_nh_.param("initial_leader_cov_yy", init_leader_cov_[1], 0.5 * 0.5);
+    private_nh_.param("initial_leader_cov_aa", init_leader_cov_[2], (M_PI/12.0) * (M_PI/12.0));
+
     cloud_pub_interval.fromSec(1.0);
     tfb_ = new tf::TransformBroadcaster();
     tf_ = new tf::TransformListener();
@@ -603,7 +615,6 @@ AmclNode::AmclNode() :
 
 void AmclNode::reconfigureCB(AMCLConfig &config, uint32_t level)
 {
-    ROS_ERROR("Reconfig Call");
     boost::recursive_mutex::scoped_lock cfl(configuration_mutex_);
 
     //we don't want to do anything on the first call
@@ -1304,6 +1315,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
         double color_min_angle = COLOR_MAX_ANGLE; //since we need absolute value and the max and min are the same but with opposite signs
 
 
+#if COLLECT_DATA
         /* Collect true pose from gazebo */
 
         true_pose_service.request.model_name = std::string("Robot1");
@@ -1340,8 +1352,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
         }
 
         /* *** */
-
-
+#endif
 
         //ROS_INFO("\n ldata.range_count: %d",ldata.range_count);
 
@@ -1519,7 +1530,20 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
         // Resample the particles
         if(!(++resample_count_ % resample_interval_))
         {
-            pf_update_resample(pf_, landmark_r, landmark_phi, landmark_loc_x, landmark_loc_y);
+            // Initialize the filter
+            pf_vector_t pf_init_leader_pose_mean = pf_vector_zero();
+            pf_init_leader_pose_mean.v[0] = init_leader_pose_[0];
+            pf_init_leader_pose_mean.v[1] = init_leader_pose_[1];
+            pf_init_leader_pose_mean.v[2] = init_leader_pose_[2];
+            pf_matrix_t pf_init_leader_pose_cov = pf_matrix_zero();
+            pf_init_leader_pose_cov.m[0][0] = init_leader_cov_[0];
+            pf_init_leader_pose_cov.m[1][1] = init_leader_cov_[1];
+            pf_init_leader_pose_cov.m[2][2] = init_leader_cov_[2];
+
+            pf_update_resample(pf_, landmark_r, landmark_phi, landmark_loc_x, landmark_loc_y,
+                               pf_init_leader_pose_mean,
+                               pf_init_leader_pose_cov
+                               );
             landmark_r = 0;
             landmark_phi = 0;
             resampled = true;
@@ -1929,7 +1953,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
             // the latest map pose to store.  We'll take the covariance from
             // last_published_pose.
             tf::Pose map_pose = latest_tf_.inverse() * odom_pose;
-            double yaw,pitch,roll;
+            double yaw, pitch, roll;
             map_pose.getBasis().getEulerYPR(yaw, pitch, roll);
 
             private_nh_.setParam("initial_pose_x", map_pose.getOrigin().x());

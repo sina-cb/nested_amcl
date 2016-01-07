@@ -385,7 +385,7 @@ void pf_init(pf_t *pf, pf_vector_t mean, pf_matrix_t cov, map_t* map)
         sample->weight = 1.0 / pf->max_samples;
 
         // Switching back to original gaussian initial distribution for non-nested particles
-        if(pf->isNested == 0){
+//        if(pf->isNested == 0){
             //This was original gaussian sampling for initialization
 
             int sample_x = 0, sample_y = 0;
@@ -399,12 +399,12 @@ void pf_init(pf_t *pf, pf_vector_t mean, pf_matrix_t cov, map_t* map)
             }while( ( !MAP_VALID(map, sample_x, sample_y)
                       || (map->cells[MAP_INDEX(map, sample_x, sample_y)].occ_state > -1) ));
 
-        }
+//        }
 
-        else{
-            //KPM: using uniform particle generation for initialization
-            sample->pose =(pf->random_pose_fn)(map);
-        }
+//        else{
+//            //KPM: using uniform particle generation for initialization
+//            sample->pose =(pf->random_pose_fn)(map);
+//        }
 
         // no covariance ...directly initialize all particles to the exact pose specified by user (or initial pose)
         //sample->pose = mean;
@@ -609,7 +609,8 @@ static void normalize_weights(double total, pf_t* pf){
 
 
 // Resample the distribution
-void pf_update_resample(pf_t *pf, double landmark_r, double landmark_phi, double landmark_x, double landmark_y)
+void pf_update_resample(pf_t *pf, double landmark_r, double landmark_phi, double landmark_x, double landmark_y,
+                        pf_vector_t leader_mean_, pf_matrix_t leader_cov_)
 {
     int i;
     double total;
@@ -839,8 +840,8 @@ void pf_update_resample(pf_t *pf, double landmark_r, double landmark_phi, double
                                     0,0);
 
                     pf_init(pf_sample_b,
-                            pf_vector_zero(),
-                            pf_matrix_zero(),
+                            leader_mean_,
+                            leader_cov_,
                             pf->random_pose_data
                             );
                 }
