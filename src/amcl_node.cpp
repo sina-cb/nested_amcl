@@ -70,7 +70,7 @@
 #include <fstream>
 #include <iostream>
 
-
+#define COLLECT_DATA 0
 
 #define NEW_UNIFORM_SAMPLING 1
 
@@ -108,6 +108,7 @@ normalize(double z)
 {
     return atan2(sin(z),cos(z));
 }
+
 static double
 angle_diff(double a, double b)
 {
@@ -155,6 +156,7 @@ private:
 
 //    double get_landmark_r();
 
+#if COLLECT_DATA
     /* Initializing the file into which we'll collect all our data */
     std::stringstream headers;
     std::string filename_abs;
@@ -167,9 +169,7 @@ private:
     int run_number;
 
     /* *** */
-
-
-
+#endif
 
     tf::TransformBroadcaster* tfb_;
     tf::TransformListener* tf_;
@@ -207,10 +207,6 @@ private:
     double getYaw(tf::Pose& t);
 
     void log_data(geometry_msgs::PoseWithCovarianceStamped pose_bestEstimate);
-
-
-
-
 
     //parameter for what odom to use
     std::string odom_frame_id_;
@@ -272,7 +268,7 @@ private:
     ros::NodeHandle nh_;
     ros::NodeHandle private_nh_;
     ros::Publisher pose_pub_;
-    ros::Publisher true_pose_pub_;
+//    ros::Publisher true_pose_pub_;
     ros::Publisher particlecloud_pub_;
 
     ros::Publisher nested_particlecloud_pub_; // For publishing cloud of nested particles
@@ -418,22 +414,14 @@ AmclNode::AmclNode() :
     private_nh_.param("landmark_loc_y", landmark_loc_y, 0.0);
 
 
-
-
-
+#if COLLECT_DATA
     /* ****Data Collection**** */
-
-
     true_pose_client = nh_.serviceClient<gazebo_msgs::GetModelState>("/gazebo/get_model_state");
-
     std::string home_path = std::string(getenv("HOME"));
 
 
     algo_name = "ANPF-AW";
-
     std::string file_name;
-
-
 
     private_nh_.param("robot_start_config_id", robot_start_config_id, std::string("DefaultConfig") );
     private_nh_.param("trajectory_id", trajectory_id, std::string("DefaultTrajectory"));
@@ -466,7 +454,6 @@ AmclNode::AmclNode() :
     file_name_strstream >> file_name;
 
     filename_abs = home_path + file_path_from_home + "/" + file_name + ".txt";
-
 
 
     headers << "algo_name" << ","
@@ -506,14 +493,9 @@ AmclNode::AmclNode() :
             << "total_nested_particle_count";
 
 
-
-
-
     /* **** End of Data collection related stuff **** */
 
-
-
-
+#endif
 
     /**** Initializing Laser Model ****/
     std::string tmp_model_type;
@@ -560,23 +542,23 @@ AmclNode::AmclNode() :
     private_nh_.param("initial_pose_a", init_pose_[2], 0.0);
     private_nh_.param("initial_cov_xx", init_cov_[0], 0.5 * 0.5);
     private_nh_.param("initial_cov_yy", init_cov_[1], 0.5 * 0.5);
-    private_nh_.param("initial_cov_aa", init_cov_[2],
-                      (M_PI/12.0) * (M_PI/12.0));
+    private_nh_.param("initial_cov_aa", init_cov_[2], (M_PI/12.0) * (M_PI/12.0));
 
     cloud_pub_interval.fromSec(1.0);
     tfb_ = new tf::TransformBroadcaster();
     tf_ = new tf::TransformListener();
 
     /**** Publishers and Subscribers ****/
-
     pose_pub_ = nh_.advertise<geometry_msgs::PoseWithCovarianceStamped>("amcl_pose", 2);
-    true_pose_pub_ = nh_.advertise<geometry_msgs::PoseStamped>("true_pose", 2);
+    //true_pose_pub_ = nh_.advertise<geometry_msgs::PoseStamped>("true_pose", 2);
     particlecloud_pub_ = nh_.advertise<geometry_msgs::PoseArray>("particlecloud", 2);
     nested_particlecloud_pub_ = nh_.advertise<geometry_msgs::PoseArray>("nested_particlecloud", 2);
 
     npf_data_pub_ = nh_.advertise<std_msgs::String>("nested_amcl_data", 2);
+#if COLLECT_DATA
     data_fname_pub_ = nh_.advertise<std_msgs::String>("data_file_name", 2);
     data_headers_pub_ = nh_.advertise<std_msgs::String>("data_headers", 2);
+#endif
 
     global_loc_srv_ = nh_.advertiseService("global_localization",
                                            &AmclNode::globalLocalizationCallback,
@@ -589,6 +571,7 @@ AmclNode::AmclNode() :
                                                           100);
     laser_scan_filter_->registerCallback(boost::bind(&AmclNode::laserReceived,
                                                      this, _1));
+
     initial_pose_sub_ = new message_filters::Subscriber<geometry_msgs::PoseWithCovarianceStamped>(nh_, "initialpose", 2);
     initial_pose_filter_ = new tf::MessageFilter<geometry_msgs::PoseWithCovarianceStamped>(*initial_pose_sub_, *tf_, global_frame_id_, 2);
     initial_pose_filter_->registerCallback(boost::bind(&AmclNode::initialPoseReceived, this, _1));
@@ -620,6 +603,7 @@ AmclNode::AmclNode() :
 
 void AmclNode::reconfigureCB(AMCLConfig &config, uint32_t level)
 {
+    ROS_ERROR("Reconfig Call");
     boost::recursive_mutex::scoped_lock cfl(configuration_mutex_);
 
     //we don't want to do anything on the first call
@@ -840,13 +824,14 @@ AmclNode::handleMapMessage(const nav_msgs::OccupancyGrid& msg)
     delete odom_;
 
     // KPM: Replacing the original constructor with one that initializes the map
-    //odom_ = new AMCLOdom();
+    // odom_ = new AMCLOdom();
     odom_ = new AMCLOdom(map_);
     ROS_ASSERT(odom_);
     if(odom_model_type_ == ODOM_MODEL_OMNI)
         odom_->SetModelOmni(alpha1_, alpha2_, alpha3_, alpha4_, alpha5_);
     else
         odom_->SetModelDiff(alpha1_, alpha2_, alpha3_, alpha4_);
+
     // Laser
     delete laser_;
     laser_ = new AMCLLaser(max_beams_, map_, color_map);
@@ -904,9 +889,7 @@ AmclNode::convertMap( const nav_msgs::OccupancyGrid& map_msg, int threshold , bo
     ROS_ASSERT(map->cells);
     for(int i=0;i<map->size_x * map->size_y;i++)
     {
-
         if(use_exact_threshold){
-
             if(map_msg.data[i] == 0)        //free
                 map->cells[i].occ_state = -1;
 
@@ -915,11 +898,8 @@ AmclNode::convertMap( const nav_msgs::OccupancyGrid& map_msg, int threshold , bo
 
             else                            //unknown
                 map->cells[i].occ_state = 0;
-
         }
-
         else{
-
             if(map_msg.data[i] == 0)        //free
                 map->cells[i].occ_state = -1;
 
@@ -928,11 +908,7 @@ AmclNode::convertMap( const nav_msgs::OccupancyGrid& map_msg, int threshold , bo
 
             else                            //unknown
                 map->cells[i].occ_state = 0;
-
         }
-
-
-
     }
 
     return map;
@@ -962,8 +938,7 @@ AmclNode::getOdomPose(tf::Stamped<tf::Pose>& odom_pose,
                       const ros::Time& t, const std::string& f)
 {
     // Get the robot's pose
-    tf::Stamped<tf::Pose> ident (tf::Transform(tf::createIdentityQuaternion(),
-                                             tf::Vector3(0,0,0)), t, f);
+    tf::Stamped<tf::Pose> ident (tf::Transform(tf::createIdentityQuaternion(), tf::Vector3(0,0,0)), t, f);
     try
     {
         this->tf_->transformPose(odom_frame_id_, ident, odom_pose);
@@ -1032,7 +1007,6 @@ AmclNode::dualMCL_PoseGenerator(void* arg, double landmark_r, double landmark_ph
     ROS_DEBUG("landmark_loc_x: %f = landmark_x: %f", landmark_x_param, landmark_x);
     ROS_DEBUG("landmark_loc_y: %f = landmark_y: %f \n", landmark_y_param, landmark_y);
 
-
     if (landmark_r <= 0){
         newPose = AmclNode::uniformPoseGenerator(arg);
         //newPose.v[0] = map->size_x;
@@ -1057,7 +1031,7 @@ AmclNode::dualMCL_PoseGenerator(void* arg, double landmark_r, double landmark_ph
 
     double gamma = 0;
 
-    if(landmark_r>0){
+    if(landmark_r > 0){
         for(;;){
             gamma = drand48() * 2 * M_PI;
 
@@ -1076,7 +1050,7 @@ AmclNode::dualMCL_PoseGenerator(void* arg, double landmark_r, double landmark_ph
         }
     }
 
-    //ROS_INFO("Dual Pose: %f, %f, %f",newPose.v[0],newPose.v[1],newPose.v[2]);
+    //ROS_INFO("Dual Pose: %f, %f, %f",newPose.v[0], newPose.v[1], newPose.v[2]);
 
     return newPose;
 }
@@ -1109,7 +1083,7 @@ AmclNode::colorReceived(const cmvision::BlobsConstPtr &Blobs){
     //ROS_INFO("Blob received...blob count: [%d]", Blob_holder.blob_count);
 
     int blob_index = 0;
-    int i=0;
+    int i = 0;
 
     int color_count = 0;
 
@@ -1150,7 +1124,7 @@ AmclNode::colorReceived(const cmvision::BlobsConstPtr &Blobs){
     // if color is sometimes not detected in between two blobs
 
     if((int)Blob_holder.blob_count > 0){
-        while (i <= 640-(int)Blob_holder.blobs[0].right){
+        while (i <= 640 - (int)Blob_holder.blobs[0].right){
             AmclNode::color_angles[i++] = false;
         }
         while (i <= 640-(int)Blob_holder.blobs[(int)Blob_holder.blob_count - 1].left){
@@ -1161,16 +1135,14 @@ AmclNode::colorReceived(const cmvision::BlobsConstPtr &Blobs){
     /****/
 
     // This is true regardless of whether landmark is assumed contiguous or not.
-    while(i<= 640){
+    while(i <= 640){
         AmclNode::color_angles[i++] = false;
     }
 
     occlusion_proportion = color_count / 640.0;
 
     return;
-
 }
-
 
 void
 AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
@@ -1178,13 +1150,13 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
     if( map_ == NULL ) {
         return;
     }
+
     boost::recursive_mutex::scoped_lock lr(configuration_mutex_);
     int laser_index = -1;
 
     // Do we have the base->base_laser Tx (transform) yet?
     if(frame_to_laser_.find(laser_scan->header.frame_id) == frame_to_laser_.end())
     {
-    	ROS_ERROR("SINA: Here 1");
         ROS_DEBUG("Setting up laser %d (frame_id=%s)\n", (int)frame_to_laser_.size(), laser_scan->header.frame_id.c_str());
         lasers_.push_back(new AMCLLaser(*laser_));
         lasers_update_.push_back(true);
@@ -1450,6 +1422,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
             //ROS_INFO("range: %f",laser_scan->ranges[i]);
             // amcl doesn't (yet) have a concept of min range.  So we'll map short
             // readings to max range.
+
             if(laser_scan->ranges[i] <= range_min)
                 ldata.ranges[i][0] = ldata.range_max;
             else
@@ -1457,7 +1430,6 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
             // Compute bearing
             ldata.ranges[i][1] = angle_min +
                     (i * angle_increment);
-
 
             /**
              * @KPM:
@@ -1468,13 +1440,16 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
 
             // KPM: I think difference_in_min_angles should actually be added,
             // since its positive when laser min angle is more than color min angle
-            color_index_floor = (int) floor( ((i*angle_increment)+difference_in_min_angles)/RADIANS_PER_PIXEL);
+            color_index_floor = (int)floor(((i * angle_increment) + difference_in_min_angles) / RADIANS_PER_PIXEL);
 
             if( (color_index_floor >= 0) && (color_index_floor <= 639) ){ //checks to see if colour has been detected at all
-                if(AmclNode::color_angles[color_index_floor]
-                        || AmclNode::color_angles[color_index_floor+1]){
+                if(AmclNode::color_angles[color_index_floor] || AmclNode::color_angles[color_index_floor + 1]){
                     ldata.ranges[i][2] = 50;
                     ldata.color_beams++;
+
+                    if (blob_ray_count >= max_beams_) ROS_FATAL("\n"
+                                                                "\tArray out of range can  occur!\n"
+                                                                "\tPlease increase the laser_max_beams parameter.");
 
                     // Only include one max ranged sensory input
                     // ...reject all other max range readings
@@ -1492,7 +1467,6 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
                     	landmark_r_distances[blob_ray_count] = ldata.ranges[i][0];
                     	blob_ray_count++;
                     }
-
 
                     temp_landmark_phi += (angle_min + (i * angle_increment));
                     ROS_DEBUG("landmark_r: %f \t landmark_phi: %f \t blob_ray_count: %d", ldata.ranges[i][0], (angle_min + (i * angle_increment)), blob_ray_count + 1 );
@@ -1810,9 +1784,10 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
             pose_pub_.publish(p);
             last_published_pose = p;
 
+#if COLLECT_DATA
             // Data Collection method
             log_data(p);
-
+#endif
 
             ///////////////////////Sending true pose
 
@@ -1838,7 +1813,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
 //            true_pose.pose.orientation.z = hyps[max_weight_hyp].pf_pose_mean.v[2];
 //            true_pose.pose.orientation.w = 0.0;
 
-            true_pose_pub_.publish(true_pose);
+            //true_pose_pub_.publish(true_pose);
 
 
 
@@ -2066,15 +2041,13 @@ AmclNode::applyInitialPose()
     }
 }
 
-
+#if COLLECT_DATA
 
 /**
  * Data collection method
  */
 void
 AmclNode::log_data(geometry_msgs::PoseWithCovarianceStamped pose_bestEstimate){
-
-
     // Get elapsed time
     struct timeval tp;
     gettimeofday(&tp, NULL);
@@ -2088,8 +2061,6 @@ AmclNode::log_data(geometry_msgs::PoseWithCovarianceStamped pose_bestEstimate){
                                                           *(pose_bestEstimate.pose.pose.position.y- true_pose_normal.v[1])
                                                           );
 
-
-
     std::stringstream data_stream;
     std_msgs::String data_msg;
 
@@ -2101,7 +2072,6 @@ AmclNode::log_data(geometry_msgs::PoseWithCovarianceStamped pose_bestEstimate){
 
     data_fname_pub_.publish(filename_msg);
     data_headers_pub_.publish(headers_msg);
-
 
     data_stream << algo_name << ","
                 << robot_start_config_id << ","
@@ -2144,7 +2114,7 @@ AmclNode::log_data(geometry_msgs::PoseWithCovarianceStamped pose_bestEstimate){
 
     ROS_DEBUG("nested_amcl sent: ## %s ##", data_msg.data.c_str());
     npf_data_pub_.publish(data_msg);
-
-
 }
+
+#endif
 

@@ -37,26 +37,32 @@ namespace amcl
 
 typedef enum
 {
-  LASER_MODEL_BEAM,
-  LASER_MODEL_LIKELIHOOD_FIELD
+    LASER_MODEL_BEAM,
+    LASER_MODEL_LIKELIHOOD_FIELD
 } laser_model_t;
 
 // Laser sensor data
 class AMCLLaserData : public AMCLSensorData
 {
-  public:
+public:
     AMCLLaserData () {ranges=NULL;};
-    virtual ~AMCLLaserData() {delete [] ranges;};
-  // Laser range data (range, bearing tuples)
-  public: int range_count;
-  public: double range_max;
-  //public: double (*ranges)[2];//@KPM modifying this to include information of whether colors match
-  public: double (*ranges)[3];  // ...now it has one more place for colors
+    virtual ~AMCLLaserData() {delete [] ranges;}
+    // Laser range data (range, bearing tuples)
+public:
+    int range_count;
+public:
+    double range_max;
+    //public: double (*ranges)[2];//@KPM modifying this to include information of whether colors match
+public:
+    double (*ranges)[3];  // ...now it has one more place for colors
 
     //@KPM: adding these to allow transferring observed location of opponent robot to the weighting function
-    public: double landmark_r;
-    public: double landmark_phi;
-    public: bool isLandmarkObserved;
+public:
+    double landmark_r;
+public:
+    double landmark_phi;
+public:
+    bool isLandmarkObserved;
     int color_beams;
 };
 
@@ -64,88 +70,88 @@ class AMCLLaserData : public AMCLSensorData
 // Laseretric sensor model
 class AMCLLaser : public AMCLSensor
 {
-  // Default constructor
-  public: AMCLLaser(size_t max_beams, map_t* map);
+    // Default constructor
+public: AMCLLaser(size_t max_beams, map_t* map);
 
-  // Default constructor with color_map added
-  public: AMCLLaser(size_t max_beams, map_t* map, map_t* color_map);
+    // Default constructor with color_map added
+public: AMCLLaser(size_t max_beams, map_t* map, map_t* color_map);
 
-  public: void SetModelBeam(double z_hit,
-                            double z_short,
-                            double z_max,
-                            double z_rand,
-                            double sigma_hit,
-                            double labda_short,
-                            double chi_outlier);
+public: void SetModelBeam(double z_hit,
+                          double z_short,
+                          double z_max,
+                          double z_rand,
+                          double sigma_hit,
+                          double labda_short,
+                          double chi_outlier);
 
-  public: void SetModelLikelihoodField(double z_hit,
-                                       double z_rand,
-                                       double sigma_hit,
-                                       double max_occ_dist);
+public: void SetModelLikelihoodField(double z_hit,
+                                     double z_rand,
+                                     double sigma_hit,
+                                     double max_occ_dist);
 
-  // Update the filter based on the sensor model.  Returns true if the
-  // filter has been updated.
-  public: virtual bool UpdateSensor(pf_t *pf, AMCLSensorData *data);
+    // Update the filter based on the sensor model.  Returns true if the
+    // filter has been updated.
+public: virtual bool UpdateSensor(pf_t *pf, AMCLSensorData *data);
 
-  // Set the laser's pose after construction
-  public: void SetLaserPose(pf_vector_t& laser_pose)
-          {this->laser_pose = laser_pose;}
+    // Set the laser's pose after construction
+public: void SetLaserPose(pf_vector_t& laser_pose)
+    {this->laser_pose = laser_pose;}
 
-  // Determine the probability for the given pose
-  private: static double BeamModel(AMCLLaserData *data,
-                                   pf_sample_set_t* set);
-  // Determine the probability for the given pose
-  private: static double LikelihoodFieldModel(AMCLLaserData *data,
-                                              pf_sample_set_t* set);
-
-
-  // **** Advanced Weighting sensor models ****
-
-  // Determine the probability for the given pose
-  private: static double BeamModel_AW(AMCLLaserData *data,
-                                      pf_sample_set_t* set, struct _pf_t * nested_pf_set);
-  // Determine the probability for the given pose
-  private: static double LikelihoodFieldModel_AW(AMCLLaserData *data,
-                                                 pf_sample_set_t* set, struct _pf_t * nested_pf_set);
+    // Determine the probability for the given pose
+private: static double BeamModel(AMCLLaserData *data,
+                                 pf_sample_set_t* set);
+    // Determine the probability for the given pose
+private: static double LikelihoodFieldModel(AMCLLaserData *data,
+                                            pf_sample_set_t* set);
 
 
+    // **** Advanced Weighting sensor models ****
 
-  // Determine the probability of nested particles for the given pose
-  private: static double NestedBeamModel(pf_sample_t *upper_sample,
-                                         AMCLLaserData *data,
-                                         pf_sample_set_t* set);
+    // Determine the probability for the given pose
+private: static double BeamModel_AW(AMCLLaserData *data,
+                                    pf_sample_set_t* set, struct _pf_t * nested_pf_set);
+    // Determine the probability for the given pose
+private: static double LikelihoodFieldModel_AW(AMCLLaserData *data,
+                                               pf_sample_set_t* set, struct _pf_t * nested_pf_set);
 
-  private: laser_model_t model_type;
 
-  // Current data timestamp
-  private: double time;
 
-  // The laser map
-  private: map_t *map;
+    // Determine the probability of nested particles for the given pose
+private: static double NestedBeamModel(pf_sample_t *upper_sample,
+                                       AMCLLaserData *data,
+                                       pf_sample_set_t* set);
 
-   //@KPM: The color map
-  private: map_t *color_map;
+private: laser_model_t model_type;
 
-  // Laser offset relative to robot
-  private: pf_vector_t laser_pose;
+    // Current data timestamp
+private: double time;
 
-  // Max beams to consider
-  private: int max_beams;
+    // The laser map
+private: map_t *map;
 
-  // Laser model params
-  //
-  // Mixture params for the components of the model; must sum to 1
-  private: double z_hit;
-  private: double z_short;
-  private: double z_max;
-  private: double z_rand;
-  //
-  // Stddev of Gaussian model for laser hits.
-  private: double sigma_hit;
-  // Decay rate of exponential model for short readings.
-  private: double lambda_short;
-  // Threshold for outlier rejection (unused)
-  private: double chi_outlier;
+    //@KPM: The color map
+private: map_t *color_map;
+
+    // Laser offset relative to robot
+private: pf_vector_t laser_pose;
+
+    // Max beams to consider
+private: int max_beams;
+
+    // Laser model params
+    //
+    // Mixture params for the components of the model; must sum to 1
+private: double z_hit;
+private: double z_short;
+private: double z_max;
+private: double z_rand;
+    //
+    // Stddev of Gaussian model for laser hits.
+private: double sigma_hit;
+    // Decay rate of exponential model for short readings.
+private: double lambda_short;
+    // Threshold for outlier rejection (unused)
+private: double chi_outlier;
 };
 
 
