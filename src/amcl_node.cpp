@@ -1546,6 +1546,9 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
                                );
             landmark_r = 0;
             landmark_phi = 0;
+            init_leader_pose_[0] = init_leader_pose_[1] = init_leader_pose_[2] = 0.0;
+            init_leader_cov_[0] = init_leader_cov_[1] = init_leader_cov_[2] = 0.0;
+        
             resampled = true;
         }
 

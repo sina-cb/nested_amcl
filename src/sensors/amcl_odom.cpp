@@ -231,7 +231,6 @@ bool AMCLOdom::UpdateAction(pf_t *pf, AMCLSensorData *data)
 
 
 bool AMCLOdom::UpdateNestedAction(pf_t *pf, double upper_delta_trans){ //, AMCLSensorData *nested_odomData){
-
     // AMCLOdomData *ndata =
     //ndata = (AMCLOdomData*) data;
 
@@ -357,8 +356,8 @@ bool AMCLOdom::UpdateNestedAction(pf_t *pf, double upper_delta_trans){ //, AMCLS
         //getNestedParticlePose(&nested_odomData->pose, &nested_odomData->delta);
 
         for(int i=0; i< set->sample_count; i++){
-            nested_pf_sample = nested_pf_set + i;
-            this->UpdateNestedAction(nested_pf_sample, delta_trans); //, (AMCLSensorData*)nested_odomData);
+          nested_pf_sample = nested_pf_set + i;
+          this->UpdateNestedAction(nested_pf_sample, delta_trans); //, (AMCLSensorData*)nested_odomData);
         }
     }
     return true;
@@ -403,23 +402,22 @@ void AMCLOdom::getNestedParticlePose(pf_vector_t *odom_pose, pf_vector_t *delta,
         }
   }
   else{
-      if(dice <= 90){
-
+      // if(dice <= 90){
           delta->v[0] = cos(odom_pose->v[2]) * nested_delta_trans;
           delta->v[1] = sin(odom_pose->v[2]) * nested_delta_trans;
           delta->v[2] = 0.00;
-      }
-      else if(dice <= 95){
-          delta->v[0] = 0.00;
-          delta->v[1] = 0.00;
-          delta->v[2] = (M_PI/6);
-      }
+      // }
+      // else if(dice <= 95){
+      //     delta->v[0] = 0.00;
+      //     delta->v[1] = 0.00;
+      //     delta->v[2] = (M_PI/6);
+      // }
 
-      else{
-          delta->v[0] = 0.00;
-          delta->v[1] = 0.00;
-          delta->v[2] = -(M_PI/6);
-      }
+      // else{
+      //     delta->v[0] = 0.00;
+      //     delta->v[1] = 0.00;
+      //     delta->v[2] = -(M_PI/6);
+      // }
   }
 
   *odom_pose = pf_vector_add(*odom_pose, *delta);

@@ -251,7 +251,7 @@ void pf_update_nested_sensor(pf_t *pf, pf_sensor_AW_model_fn_t sensor_fn, pf_nes
 
 // Resample the distribution
 void pf_update_resample(pf_t *pf, double landmark_r, double landmark_phi, double landmark_x, double landmark_y, //KPM adding r and phi of landmark
-                        pf_vector_t leader_mean_, pf_matrix_t leader_cov_); //SINA: Added leadre init pose estimation to init the nested particles
+                        pf_vector_t leader_mean_, pf_matrix_t leader_cov_);
 
 // Added by KPM to enable resampling specifically from the nested distribution
 // Resample the nested distribution

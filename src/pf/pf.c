@@ -385,7 +385,11 @@ void pf_init(pf_t *pf, pf_vector_t mean, pf_matrix_t cov, map_t* map)
         sample->weight = 1.0 / pf->max_samples;
 
         // Switching back to original gaussian initial distribution for non-nested particles
-//        if(pf->isNested == 0){
+        if(mean.v[0] == 0 && mean.v[1] == 0 && mean.v[2] == 0 && pf->isNested != 0){
+            //KPM: using uniform particle generation for initialization
+            //SINA: After the first time, add the particles in the freespace, not around the leader initial pose estimation
+            sample->pose =(pf->random_pose_fn)(map);
+        }else{
             //This was original gaussian sampling for initialization
 
             int sample_x = 0, sample_y = 0;
@@ -398,13 +402,7 @@ void pf_init(pf_t *pf, pf_vector_t mean, pf_matrix_t cov, map_t* map)
 
             }while( ( !MAP_VALID(map, sample_x, sample_y)
                       || (map->cells[MAP_INDEX(map, sample_x, sample_y)].occ_state > -1) ));
-
-//        }
-
-//        else{
-//            //KPM: using uniform particle generation for initialization
-//            sample->pose =(pf->random_pose_fn)(map);
-//        }
+        }
 
         // no covariance ...directly initialize all particles to the exact pose specified by user (or initial pose)
         //sample->pose = mean;
@@ -525,7 +523,6 @@ void pf_update_nested_sensor(pf_t *pf,
     set = pf->sets + pf->current_set;
     nested_pf_set = pf_get_this_nested_set(pf, pf->current_set);
 
-
     // Compute sample weights for Nested particles
     if(pf->nesting_lvl > 0 && pf->max_nested_samples > 0){
         int i = 0;
@@ -546,7 +543,6 @@ void pf_update_nested_sensor(pf_t *pf,
             }
         }
     }
-
 
     // Compute the sample weights for normal particles
     total = (*sensor_fn) (sensor_data, set, nested_pf_set);
@@ -604,10 +600,6 @@ static void normalize_weights(double total, pf_t* pf){
     }
 }
 
-
-
-
-
 // Resample the distribution
 void pf_update_resample(pf_t *pf, double landmark_r, double landmark_phi, double landmark_x, double landmark_y,
                         pf_vector_t leader_mean_, pf_matrix_t leader_cov_)
@@ -641,14 +633,13 @@ void pf_update_resample(pf_t *pf, double landmark_r, double landmark_phi, double
     total = 0;
     set_b->sample_count = 0;
 
-
     w_diff = 1.0 - pf->w_fast / pf->w_slow;
     if(w_diff < 0.0)
         w_diff = 0.0;
     //printf("w_diff: %9.6f\n", w_diff);
 
     int M = pf_resample_limit(pf, set_a->kdtree->leaf_count);
-    //  printf("M: %i\n", M);
+    printf("M: %i\n", M);
 
 
     // ********
@@ -688,15 +679,10 @@ void pf_update_resample(pf_t *pf, double landmark_r, double landmark_phi, double
     // Create the kd tree for adaptive sampling
     pf_kdtree_clear(set_b->kdtree);
 
-
     // ********
 
-
-
-
-
     // Low-variance resampler, taken from Probabilistic Robotics, p110
-    count_inv = 1.0/M;
+    count_inv = 1.0 / M;
     r = drand48() * count_inv;
     c = set_a->samples[0].weight;
     i = 0;
@@ -711,15 +697,14 @@ void pf_update_resample(pf_t *pf, double landmark_r, double landmark_phi, double
 
         //    if(drand48() < w_diff){
 
-        if( (pf->isNested > 0) && drand48() < 0.05 ){
+        if((pf->isNested > 0) && drand48() < 0.05){
 #if NESTED_DUAL
-            if( landmark_r > 0){
+            if(landmark_r > 0){
                 //KPM..this is the original random sampling function
                 //sample_b->pose = (pf->random_pose_fn)(pf->random_pose_data);
 
                 //KPM ...trying dual sampling instead of random sampling
                 sample_b->pose = (pf->dual_pose_fn)(pf->random_pose_data, landmark_r, landmark_phi, landmark_x, landmark_y);
-
             }
             else{
                 sample_b->pose = (pf->random_pose_fn)(pf->random_pose_data);
@@ -727,31 +712,21 @@ void pf_update_resample(pf_t *pf, double landmark_r, double landmark_phi, double
 #else
             sample_b->pose = (pf->random_pose_fn)(pf->random_pose_data);
 #endif
-        }
-
-
-        else{
-
+        }else{
             if(drand48() < w_diff){ // Recovery for normal particles
 
                 /** Turning off DUAL sampling for non-nested particles for the moment. Re-enable this when it is ready
                 if(DUAL_MCL == 1){ //KPM ...trying dual sampling instead of random sampling
                     sample_b->pose = (pf->dual_pose_fn)(pf->random_pose_data, landmark_r, landmark_phi, landmark_x, landmark_y);
                 }
-
-
-
                 else{ //Added by KPM to take random samples only when DUAL is turned off. Originally this condition was absent
                 **/
                 sample_b->pose = (pf->random_pose_fn)(pf->random_pose_data);
-
                 //}
-
             }
 
             else
             {
-
                 // Low-variance resampler, taken from Probabilistic Robotics, p110
                 U = r + m * count_inv;
                 while(U>c)
@@ -793,7 +768,6 @@ void pf_update_resample(pf_t *pf, double landmark_r, double landmark_phi, double
             }
         }
 
-
         sample_b->weight = 1.0;
         total += sample_b->weight;
 
@@ -803,11 +777,8 @@ void pf_update_resample(pf_t *pf, double landmark_r, double landmark_phi, double
     } // End looping through for resampling
 
 
-
-
     int old_max_nested_samples = pf->max_nested_samples;
-    pf->max_nested_samples = (int)((pf->max_samples - set_b->sample_count)/set_b->sample_count);
-
+    pf->max_nested_samples = (int)((pf->max_samples - set_b->sample_count) / set_b->sample_count);
 
     //Resample all nested particles (if particles exist)
 
@@ -824,10 +795,9 @@ void pf_update_resample(pf_t *pf, double landmark_r, double landmark_phi, double
 
                 pf_sample_b->max_samples = pf->max_nested_samples;
 
-
-
                 // allocate and initiate from scratch if no nested particles before this
                 if(old_max_nested_samples <= 0 ){
+                    printf("Allocating new nested particles!\n");
                     pf_nested_alloc(pf_sample_b,
                                     0,
                                     pf->max_nested_samples,
@@ -969,11 +939,8 @@ void pf_update_resample(pf_t *pf, double landmark_r, double landmark_phi, double
     return;
 }
 
-
-
-
-
 // Resample the nested distribution
+// SINA: NOT USED!!!
 void pf_update_nested_resample(pf_t *pf, double landmark_r, double landmark_phi, pf_vector_t upper_particle_pose)
 {
     int i;
