@@ -407,8 +407,6 @@ void pf_init(pf_t *pf, pf_vector_t mean, pf_matrix_t cov, map_t* map)
         // no covariance ...directly initialize all particles to the exact pose specified by user (or initial pose)
         //sample->pose = mean;
 
-
-
         // Add sample to histogram
         pf_kdtree_insert(set->kdtree, sample->pose, sample->weight);
     }
@@ -797,7 +795,6 @@ void pf_update_resample(pf_t *pf, double landmark_r, double landmark_phi, double
 
                 // allocate and initiate from scratch if no nested particles before this
                 if(old_max_nested_samples <= 0 ){
-                    printf("Allocating new nested particles!\n");
                     pf_nested_alloc(pf_sample_b,
                                     0,
                                     pf->max_nested_samples,

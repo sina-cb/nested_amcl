@@ -1150,6 +1150,17 @@ AmclNode::colorReceived(const cmvision::BlobsConstPtr &Blobs){
         AmclNode::color_angles[i++] = false;
     }
 
+    // Uncomment if you want to see the color_angles values!
+//    std::stringbuf buffer;
+//    std::ostream os (&buffer);
+//    for (size_t j = 0; j < 640; j++){
+//        if (AmclNode::color_angles[j])
+//            os << "T" << "";
+//        else
+//            os << "F" << "";
+//    }
+//    ROS_INFO("%s", buffer.str().c_str());
+
     occlusion_proportion = color_count / 640.0;
 
     return;
@@ -1311,7 +1322,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
         AMCLLaserData ldata;
         ldata.sensor = lasers_[laser_index];
         ldata.range_count = laser_scan->ranges.size();
-        int color_index_floor =0;
+        int color_index_floor = 0;
         double color_min_angle = COLOR_MAX_ANGLE; //since we need absolute value and the max and min are the same but with opposite signs
 
 
@@ -1393,9 +1404,6 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
         // wrapping angle to [-pi .. pi]
         angle_increment = fmod(angle_increment + 5*M_PI, 2*M_PI) - M_PI;
 
-
-
-
         ROS_DEBUG("Laser %d angles in base frame: min: %.3f inc: %.3f", laser_index, angle_min, angle_increment);
 
         // Apply range min/max thresholds, if the user supplied them
@@ -1428,7 +1436,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
         ldata.color_beams = 0;
 
 
-        for(int i=0;i<ldata.range_count;i++)
+        for(int i = 0; i < ldata.range_count; i++)
         {
             //ROS_INFO("range: %f",laser_scan->ranges[i]);
             // amcl doesn't (yet) have a concept of min range.  So we'll map short
@@ -1438,6 +1446,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
                 ldata.ranges[i][0] = ldata.range_max;
             else
                 ldata.ranges[i][0] = laser_scan->ranges[i];
+
             // Compute bearing
             ldata.ranges[i][1] = angle_min +
                     (i * angle_increment);
@@ -1465,7 +1474,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
                     // Only include one max ranged sensory input
                     // ...reject all other max range readings
                     if(ldata.ranges[i][0] == ldata.range_max){
-                        if(isMaxRangeIncluded == false){
+                        if(isMaxRangeIncluded == false && !isnan(ldata.ranges[i][0])){
                             temp_landmark_r += ldata.ranges[i][0];
                             landmark_r_distances[blob_ray_count] = ldata.ranges[i][0];
                             blob_ray_count++;
@@ -1474,9 +1483,11 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
                         }
                     }
                     else{
-                    	temp_landmark_r += ldata.ranges[i][0];
-                    	landmark_r_distances[blob_ray_count] = ldata.ranges[i][0];
-                    	blob_ray_count++;
+                        if (!isnan(ldata.ranges[i][0])){
+                            temp_landmark_r += ldata.ranges[i][0];
+                            landmark_r_distances[blob_ray_count] = ldata.ranges[i][0];
+                            blob_ray_count++;
+                        }
                     }
 
                     temp_landmark_phi += (angle_min + (i * angle_increment));
@@ -1486,7 +1497,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
                 else{
                     if(temp_landmark_r > 0){
                         //landmark_r = temp_landmark_r/blob_ray_count;
-                        landmark_phi = temp_landmark_phi/blob_ray_count;
+                        landmark_phi = temp_landmark_phi / blob_ray_count;
 
                         qsort(landmark_r_distances, blob_ray_count, sizeof(int) ,compare_int);
 
@@ -1497,7 +1508,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
                         ldata.landmark_phi = landmark_phi;
                         ldata.isLandmarkObserved = true;
 
-                        ROS_DEBUG("final landmark_r: %f \t\t landmark_phi: %f \n",landmark_r,landmark_phi);
+                        ROS_INFO("final landmark_r: %f \t\t landmark_phi: %f \n",landmark_r,landmark_phi);
                     }
                     temp_landmark_r = 0;
                     temp_landmark_phi = 0;
@@ -1511,8 +1522,6 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
                 // temp_landmark_phi = 0;
                 // blob_ray_count = 0;
             }
-
-
         }
 
 

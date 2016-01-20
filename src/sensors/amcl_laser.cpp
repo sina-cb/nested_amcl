@@ -434,11 +434,7 @@ double AMCLLaser::NestedBeamModel(pf_sample_t *upper_sample, AMCLLaserData *data
                 pz = pz + (self->z_hit * exp(-(z * z) / z_hit_denom));
 
                 weighting_multiplier = data->color_beams;
-
-            }
-
-
-            else{ // When we don't have a sighting of the other robot
+            }else{ // When we don't have a sighting of the other robot
 
                 sample_abs_angle = atan2((pose.v[1] - upper_pose.v[1]), (pose.v[0] - upper_pose.v[0]));
                 sample_bearing = sample_abs_angle - upper_pose.v[2];
@@ -506,7 +502,7 @@ double AMCLLaser::NestedBeamModel(pf_sample_t *upper_sample, AMCLLaserData *data
                 // Gaussian model
                 // NOTE: this should have a normalization of 1/(sqrt(2pi)*sigma)
 
-                if(z >=0 ){
+                if(z >= 0){
                     pz = pz + (self->z_hit * exp(-(z * z) / z_hit_denom));
                 }
                 else{
@@ -554,8 +550,6 @@ double AMCLLaser::NestedBeamModel(pf_sample_t *upper_sample, AMCLLaserData *data
 
     return(total_weight);
 }
-
-
 
 
 // **** Advanced Weighting sensor models ****
