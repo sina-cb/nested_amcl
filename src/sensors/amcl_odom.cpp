@@ -364,7 +364,7 @@ bool AMCLOdom::UpdateNestedAction(pf_t *pf, double upper_delta_trans){ //, AMCLS
 }
 
 
-
+// SINA: This method will propagate the odom
 void AMCLOdom::getNestedParticlePose(pf_vector_t *odom_pose, pf_vector_t *delta, double upper_delta_trans){
 
   double dice = drand48() * 100;

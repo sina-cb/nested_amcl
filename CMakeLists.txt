@@ -12,6 +12,37 @@ else()
     message(FATAL_ERROR "The compiler ${CMAKE_CXX_COMPILER} has no C++11 support. Please use a different C++ compiler.")
 endif()
 
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -Wall")
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -Wall")
+
+# The Google Glog_Pack library.
+# Store the glog include directory in GLOG_INCLUDE_DIR.
+# The PATHS variable may be specified to give hints for where to find logging.h
+find_path(GLOG_INCLUDE_DIR
+  NAMES logging.h
+  PATHS /usr/local/include/glog /usr/local/include/ /usr/include/glog/ /usr/include/
+)
+
+if(GLOG_INCLUDE_DIR)
+        message(STATUS "Found GLog include directory")
+else()
+        message(STATUS "ERROR: Could not find GLog include directory")
+endif()
+
+# Find libmlpack.so (or equivalent) and store it in MLPACK_LIBRARY.
+# If this example script were smarter, it would also find other dependencies of mlpack and store them in
+# an MLPACK_LIBRARIES variable instead.
+find_library(GLOG_LIBRARY
+  NAMES glog libglog
+  PATHS /usr/lib64/ /usr/lib/ /usr/local/lib64/ /usr/local/
+)
+
+if(GLOG_LIBRARY)
+        message(STATUS "Found GLog link libraries")
+else()
+        message(STATUS "ERROR: Could not find GLog link libraries")
+endif()
+
 find_package(catkin REQUIRED
             COMPONENTS
             roscpp
@@ -36,7 +67,7 @@ catkin_package(
   LIBRARIES amcl_sensors amcl_map amcl_pf
 )
 
-include_directories(include/amcl include/amcl/map include/amcl/sensors include/amcl/pf)
+include_directories(include/amcl include/map include/sensors include/pf include/MCFHMM)
 include_directories(${catkin_INCLUDE_DIRS} ${Boost_INCLUDE_DIRS})
 
 add_library(nested_amcl_pf
@@ -59,23 +90,58 @@ add_library(nested_amcl_sensors
                     src/sensors/amcl_odom.cpp
                     src/sensors/amcl_laser.cpp)
 
+add_library(MCFHMM_lib
+					src/MCFHMM/Sampler.cpp
+					src/MCFHMM/MCFHMM.cpp
+					src/MCFHMM/DETree.cpp
+					src/MCFHMM/Sample.cpp
+					src/MCFHMM/Observation.cpp
+					src/MCFHMM/Timer.cpp)
 
 
-target_link_libraries(nested_amcl_sensors nested_amcl_map nested_amcl_pf)
+set(MCFHMM_HDRs
+	include/MCFHMM/Sampler.h
+	include/MCFHMM/MCFHMM.h
+	include/MCFHMM/DETree.h
+	include/MCFHMM/Sample.h
+	include/MCFHMM/Observation.h
+	include/MCFHMM/Timer.h
+)
 
+set(nested_amcl_pf_HDRs
+	include/pf/eig3.h
+	include/pf/pf.h
+	include/pf/pf_kdtree.h
+	include/pf/pf_pdf.h
+	include/pf/pf_vector.h
+)
+
+set(nested_amcl_map_HDRs
+	include/map/map.h
+)
+
+set(nested_amcl_sensors_HDRs
+	include/sensors/amcl_laser.h
+	include/sensors/amcl_odom.h
+	include/sensors/amcl_sensor.h
+)
+
+
+target_link_libraries(nested_amcl_sensors nested_amcl_map nested_amcl_pf MCFHMM_lib)
 
 add_executable(nested_amcl
-                       src/amcl_node.cpp)
+                       src/amcl_node.cpp ${MCFHMM_HDRs} ${nested_amcl_pf_HDRs} ${nested_amcl_map_HDRs} ${nested_amcl_sensors_HDRs})
 add_dependencies(nested_amcl amcl_gencfg)
 
 target_link_libraries(nested_amcl
-    nested_amcl_sensors nested_amcl_map nested_amcl_pf
+    nested_amcl_sensors nested_amcl_map nested_amcl_pf MCFHMM_lib
     ${Boost_LIBRARIES}
     ${catkin_LIBRARIES}
+    ${GLOG_LIBRARY}
 )
 
 install( TARGETS
-    nested_amcl nested_amcl_sensors nested_amcl_map nested_amcl_pf
+    nested_amcl nested_amcl_sensors nested_amcl_map nested_amcl_pf MCFHMM_lib
     ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
     LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
     RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
