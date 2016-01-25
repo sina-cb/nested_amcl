@@ -159,12 +159,26 @@ private:
     /* SINA: this object will be used to train and reason from the hmm */
     MCFHMM hmm;
 
+    // SINA: These two variables will be used to find out when to learn the HMM
+    bool learn_criteria;
+    int collected_sample;
+
+    // SINA: when landmark_r and landmark_phi are found, copy them here and reset them when collected
+    double landmark_r_sample;
+    double landmark_phi_sample;
+
     /* SINA: this vector will hold all of the observations throughout the run
      *
      * We should add observations to this vector and keep updating the HMM whenever
      * we have new data available (or we can have intervals, still not decided)
      */
     vector<Observation> observations;
+    vector<Sample>      pi_;
+    vector<Sample>      m_;
+    vector<Sample>      v_;
+    double              last_velocity;
+    ros::Time           last_sampling_time;
+    geometry_msgs::PoseWithCovarianceStamped previous_time_pose;
 
     //    double get_landmark_r();
 
@@ -207,6 +221,9 @@ private:
 
     /* SINA: This function will be called whenever we have new data to update the HMM structure */
     void learn_HMM();
+
+    /* SINA: This method is called to collect an observation based on the application */
+    void collect_sample(geometry_msgs::PoseWithCovarianceStamped* our_pose, double landmark_r, double landmark_phi);
 
     // Message callbacks
     bool globalLocalizationCallback(std_srvs::Empty::Request& req,
@@ -321,7 +338,7 @@ private:
     double init_pose_[3];
     double init_cov_[3];
 
-    //SINA: Initial guess for the leader location
+    //SINA: Initial guess for the leader pose
     double init_leader_pose_[3];
     double init_leader_cov_[3];
 
@@ -384,6 +401,18 @@ AmclNode::AmclNode() :
     //KPM: innitializing some variables
     landmark_phi = 0;
     landmark_r = 0;
+
+    //SINA: Initialize the landmark_r_sample and landmark_phi_sample to -1
+    landmark_r_sample = -1;
+    landmark_phi_sample = -1;
+
+    //SINA: Initialize the learn criteria and collected_samples
+    learn_criteria = false;
+    collected_sample = 0;
+
+    //SINA: Assuming that the leader starts with velocity = 0
+    last_velocity = 0;
+
     other_robot_distance = 0.0;
     isLandmarkObserved = false;
     nested_particle_count = 0;
@@ -734,7 +763,7 @@ void AmclNode::reconfigureCB(AMCLConfig &config, uint32_t level)
 
     // KPM: Replacing the original constructor with one that initializes the map
     //odom_ = new AMCLOdom();
-    odom_ = new AMCLOdom(map_);
+    odom_ = new AMCLOdom(map_, &hmm);
 
     ROS_ASSERT(odom_);
     if(odom_model_type_ == ODOM_MODEL_OMNI)
@@ -779,7 +808,21 @@ void AmclNode::reconfigureCB(AMCLConfig &config, uint32_t level)
 void AmclNode::learn_HMM(){
     int max_iterations = 1;
     int N = 30;
-    hmm.learn_hmm(&observations, max_iterations, N);
+//    hmm.learn_hmm(&observations, max_iterations, N);
+
+    for (size_t i = 0; i < pi_.size(); i++){
+        pi_[i].p = 1.0 / pi_.size();
+    }
+
+    for (size_t i = 0; i < m_.size(); i++){
+        m_[i].p = 1.0 / m_.size();
+    }
+
+    for (size_t i = 0; i < v_.size(); i++){
+        v_[i].p = 1.0 / v_.size();
+    }
+
+    hmm.set_distributions(&pi_, &m_, &v_, 0.5);
 }
 
 // init the variable bounds in the HMM (the variables are continuous, but we assume they are bounded)
@@ -794,7 +837,27 @@ void AmclNode::init_HMM(){
     vector<double> * v_high_limits = new vector<double>();
 
     // TODO: Add bounds to the vectors here!
+    pi_low_limits->push_back(-5);
+    pi_high_limits->push_back(5);
 
+    m_low_limits->push_back(-5);
+    m_low_limits->push_back(-5);
+
+    m_high_limits->push_back(5);\
+    m_high_limits->push_back(5);
+
+    v_low_limits->push_back(0);
+    v_low_limits->push_back(-5);
+
+    v_high_limits->push_back(15);
+    v_high_limits->push_back(5);
+
+    for (size_t i = 0; i < 20; i++){
+        Sample pi_temp;
+        pi_temp.values.push_back(0.0);
+
+        pi_.push_back(pi_temp);
+    }
 
     hmm.set_limits(pi_low_limits, pi_high_limits, m_low_limits, m_high_limits, v_low_limits, v_high_limits);
 
@@ -886,7 +949,7 @@ AmclNode::handleMapMessage(const nav_msgs::OccupancyGrid& msg)
 
     // KPM: Replacing the original constructor with one that initializes the map
     // odom_ = new AMCLOdom();
-    odom_ = new AMCLOdom(map_);
+    odom_ = new AMCLOdom(map_, &hmm);
     ROS_ASSERT(odom_);
     if(odom_model_type_ == ODOM_MODEL_OMNI)
         odom_->SetModelOmni(alpha1_, alpha2_, alpha3_, alpha4_, alpha5_);
@@ -1223,6 +1286,13 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
         return;
     }
 
+    if ( learn_criteria ){
+        // TODO: Not sure if it should reside here or not! :)
+        // SINA: Calling this to learn the HMM
+        learn_HMM();
+        learn_criteria = false;
+    }
+
     boost::recursive_mutex::scoped_lock lr(configuration_mutex_);
     int laser_index = -1;
 
@@ -1346,6 +1416,9 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
         // updated correctly
         odata.delta = delta;
 
+        odata.time = ros::Time::now().nsec - last_sampling_time.nsec;
+        odata.observations = &observations;
+
         /**
           Notes for me:
           UpdateAction essentially applies the transition function to all samples present in the sets of samples that are contained
@@ -1355,8 +1428,6 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
           Appropriate noise is included (for both rotation and translation) and the sampling is done using a zero-mean gaussian.
 
           */
-
-
         // Use the action data to update the filter
         odom_->UpdateAction(pf_, (AMCLSensorData*)&odata);
 
@@ -1554,6 +1625,9 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
                         ldata.landmark_phi = landmark_phi;
                         ldata.isLandmarkObserved = true;
 
+                        landmark_r_sample = landmark_r;
+                        landmark_phi_sample = landmark_phi;
+
                         ROS_DEBUG("final landmark_r: %f \t\t landmark_phi: %f \n",landmark_r,landmark_phi);
                     }
                     temp_landmark_r = 0;
@@ -1581,10 +1655,6 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
         lasers_update_[laser_index] = false;
 
         pf_odom_pose_ = pose;
-
-        // TODO: Not sure if it should reside here or not! :)
-        // SINA: Calling this to learn the HMM
-        learn_HMM();
 
         // Resample the particles
         if(!(++resample_count_ % resample_interval_))
@@ -1842,19 +1912,21 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
             p.pose.covariance[6*5+5] = set->cov.m[2][2];
 
             /*
-         printf("cov:\n");
-         for(int i=0; i<6; i++)
-         {
-         for(int j=0; j<6; j++)
-         printf("%6.3f ", p.covariance[6*i+j]);
-         puts("");
-         }
-       */
-
+             printf("cov:\n");
+             for(int i=0; i<6; i++)
+             {
+             for(int j=0; j<6; j++)
+             printf("%6.3f ", p.covariance[6*i+j]);
+             puts("");
+             }
+           */
 
             // Publish amcl's best estimate for current pose
             pose_pub_.publish(p);
+            previous_time_pose = last_published_pose;
             last_published_pose = p;
+
+            collect_sample(&last_published_pose, landmark_r_sample, landmark_phi_sample);
 
 #if COLLECT_DATA
             // Data Collection method
@@ -2016,6 +2088,67 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
 
 }
 
+void AmclNode::collect_sample(geometry_msgs::PoseWithCovarianceStamped *our_pose,
+                                double landmark_r, double landmark_phi){
+
+    double delta_x = our_pose->pose.pose.position.x - previous_time_pose.pose.pose.position.x;
+    delta_x *= delta_x;
+    delta_x += pow(our_pose->pose.pose.position.y - previous_time_pose.pose.pose.position.y, 2.0);
+    delta_x = sqrt(delta_x);
+
+    if (landmark_r_sample != -1 && landmark_phi_sample != -1){
+        ros::Time current_sampling_time = ros::Time::now();
+
+        ROS_INFO("Current pose: %f %f %f", our_pose->pose.pose.position.x,
+                 our_pose->pose.pose.position.y, our_pose->pose.pose.orientation.w);
+
+        ROS_INFO("Landmark_R: %f, Landmark_Phi: %f", landmark_r, landmark_phi);
+
+        Observation obs;
+        obs.values.push_back(landmark_r);
+
+        observations.push_back(obs);
+
+        if (observations.size() > 1){
+            double delta_t = current_sampling_time.nsec - last_sampling_time.nsec;
+            delta_t /= 1000000000.0;
+
+            double current_velocity = ((landmark_r + delta_x)
+                                       - observations[observations.size() - 2].values[0]) / delta_t;
+
+            ROS_INFO ("Velocity: %f (LastTime: %d, Now: %d)", current_velocity,
+                      last_sampling_time.nsec / 1000000000, current_sampling_time.nsec / 1000000000);
+
+            Sample temp_m_sample;
+            temp_m_sample.values.push_back(current_velocity);
+            temp_m_sample.values.push_back(last_velocity);
+            m_.push_back(temp_m_sample);
+            last_velocity = current_velocity;
+
+            Sample temp_v_sample;
+            temp_v_sample.values.push_back(landmark_r);
+            temp_v_sample.values.push_back(current_velocity);
+            v_.push_back(temp_v_sample);
+        }
+
+        collected_sample++;
+
+        ROS_INFO("Collected samples: %d", collected_sample);
+
+        if (collected_sample >= 5){
+            collected_sample = 0;
+            learn_criteria = true;
+
+            ROS_INFO("Let's learn something!");
+        }
+
+        landmark_r_sample = -1;
+        landmark_phi_sample = -1;
+
+        last_sampling_time = current_sampling_time;
+    }
+
+}
 
 double
 AmclNode::getYaw(tf::Pose& t)

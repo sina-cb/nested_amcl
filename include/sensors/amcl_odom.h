@@ -31,6 +31,7 @@
 
 #include "amcl_sensor.h"
 #include "../pf/pf_pdf.h"
+#include "MCFHMM.h"
 
 namespace amcl
 {
@@ -59,7 +60,7 @@ class AMCLOdom : public AMCLSensor
   public: AMCLOdom();
 
   // Constructor with map parameter (Created by KPM for NPF)
-  public: AMCLOdom(map_t *map);
+  public: AMCLOdom(map_t *map, MCFHMM *hmm);
 
   public: void SetModelDiff(double alpha1,
                             double alpha2,
@@ -78,10 +79,12 @@ class AMCLOdom : public AMCLSensor
 
   // Update the nested filter based on the action model.  Returns true if the filter
   // has been updated.
-  public: virtual bool UpdateNestedAction(pf_t *nested_pf, double upper_delta_trans); //, AMCLSensorData *nested_odomData);
+  public: virtual bool UpdateNestedAction(pf_t *nested_pf, double upper_delta_trans,
+                                          double delta_t, vector<Observation> *obs); //, AMCLSensorData *nested_odomData);
 
   // Generates fake odom delta based on a behaviour model
-  void getNestedParticlePose(pf_vector_t *odom_pose, pf_vector_t *delta, double delta_trans);
+  void getNestedParticlePose(pf_vector_t *odom_pose, pf_vector_t *delta, double delta_trans,
+                             double delta_t, vector<Observation> *obs);
 
   // Current data timestamp
   private: double time;
@@ -91,6 +94,8 @@ class AMCLOdom : public AMCLSensor
 
   // Drift parameters
   private: double alpha1, alpha2, alpha3, alpha4, alpha5;
+
+  private: MCFHMM *hmm;
 
   // Map for generating nested particle poses within the map.
   map_t *map;

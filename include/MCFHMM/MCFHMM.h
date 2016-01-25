@@ -48,7 +48,7 @@ public:
                     );
     void set_distributions(vector<Sample> * pi, vector<Sample> * m, vector<Sample> * v, double rho);
     void learn_hmm(vector<Observation> *observations, size_t max_iteration, int N);
-    vector<vector<Sample> > forward(vector<Observation> *observations, size_t N);
+    DETree forward(vector<Observation> *observations, size_t N);
 
     void init_GLOG();
 
