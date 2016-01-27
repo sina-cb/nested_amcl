@@ -31,6 +31,8 @@ private:
     vector<double> *v_low_limit = NULL;
     vector<double> *v_high_limit = NULL;
 
+    bool initialized = false;
+
     double rho = 1.0;
     double rho_bar = 0.5;
     double eta = 1.2;
@@ -53,6 +55,7 @@ public:
     void init_GLOG();
 
     double _rho();
+    bool initialized_();
 };
 
 #endif

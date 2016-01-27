@@ -40,6 +40,8 @@
 #define LASER_WEIGHTAGE 1
 #define COLOR_WEIGHTAGE 0
 
+#define PENALTY 1
+
 using namespace amcl;
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -130,7 +132,7 @@ bool AMCLLaser::UpdateSensor(pf_t *pf, AMCLSensorData *data)
         //ROS_INFO("inside nested UpdateSensor");
         if(this->model_type == LASER_MODEL_BEAM)
             pf_update_nested_sensor(pf, (pf_sensor_AW_model_fn_t) BeamModel_AW, (pf_nested_sensor_model_fn_t) NestedBeamModel, data);
-        else if(this->model_type == LASER_MODEL_LIKELIHOOD_FIELD)
+        else if(this->model_type == LASER_MODEL_LIKELIHOOD_FIELD) //THIS ONE FOR MY EXPERIMENTS! :)
             pf_update_nested_sensor(pf, (pf_sensor_AW_model_fn_t) LikelihoodFieldModel_AW, (pf_nested_sensor_model_fn_t) NestedBeamModel, data);
         else
             pf_update_nested_sensor(pf, (pf_sensor_AW_model_fn_t) BeamModel_AW, (pf_nested_sensor_model_fn_t) NestedBeamModel, data);
@@ -180,7 +182,7 @@ double AMCLLaser::BeamModel(AMCLLaserData *data, pf_sample_set_t* set)
 
             // Compute the range according to the map
             map_range = map_calc_range(self->map, pose.v[0], pose.v[1],
-                                       pose.v[2] + obs_bearing, data->range_max);
+                    pose.v[2] + obs_bearing, data->range_max);
             pz = 0.0;
 
             // Part 1: good, but noisy, hit
@@ -228,8 +230,6 @@ double AMCLLaser::LikelihoodFieldModel(AMCLLaserData *data, pf_sample_set_t* set
     pf_sample_t *sample;
     pf_vector_t pose;
     pf_vector_t hit;
-
-
 
     self = (AMCLLaser*) data->sensor;
 
@@ -312,7 +312,6 @@ double AMCLLaser::LikelihoodFieldModel(AMCLLaserData *data, pf_sample_set_t* set
                     pz *= (1- (self->z_hit * exp(-(color_z * color_z) / z_hit_denom)));
                 }
 
-
                 // Part 2: random measurements
                 pz = pz + (self->z_rand * z_rand_mult) *(self->z_rand * z_rand_mult);
             }
@@ -365,9 +364,6 @@ double AMCLLaser::NestedBeamModel(pf_sample_t *upper_sample, AMCLLaserData *data
     pf_vector_t pose, upper_pose;
     pf_vector_t hit;
 
-
-
-
     self = (AMCLLaser*) data->sensor;
 
     total_weight = 0.0;
@@ -377,10 +373,6 @@ double AMCLLaser::NestedBeamModel(pf_sample_t *upper_sample, AMCLLaserData *data
     // Pre-compute a couple of things
     double z_hit_denom = 2 * self->sigma_hit * self->sigma_hit;
     //double z_rand_mult = 1.0/data->range_max;
-
-
-
-
 
     // Compute the sample weights
     for (j = 0; j < set->sample_count; j++)
@@ -408,6 +400,10 @@ double AMCLLaser::NestedBeamModel(pf_sample_t *upper_sample, AMCLLaserData *data
 
         else{ // Valid MAP locations
 
+#if PENALTY
+            bool far_down_weight = false;
+            bool bearing_down_weight = false;
+#endif
             if(data->isLandmarkObserved){ //When we have a sighting of the other robot
 
                 obs_range = data->landmark_r;
@@ -423,7 +419,7 @@ double AMCLLaser::NestedBeamModel(pf_sample_t *upper_sample, AMCLLaserData *data
                 y1 = MAP_GYWY(self->map, hit.v[1]);
 
                 // Part 1: Get distance from the hit to sample.
-                z = sqrt((x0-x1)*(x0-x1) + (y0-y1)*(y0-y1)) * self->map->scale;
+                z = sqrt((x0 - x1) * (x0 - x1) + (y0 - y1) * (y0 - y1)) * self->map->scale;
 
                 if(z > self->map->max_occ_dist){ // Mapping any distance greater than max to max
                     z = self->map->max_occ_dist;
@@ -434,11 +430,34 @@ double AMCLLaser::NestedBeamModel(pf_sample_t *upper_sample, AMCLLaserData *data
                 pz = pz + (self->z_hit * exp(-(z * z) / z_hit_denom));
 
                 weighting_multiplier = data->color_beams;
-            }else{ // When we don't have a sighting of the other robot
+
+#if PENALTY
+                int upper_x0, upper_y0;
+                upper_x0 = MAP_GXWX(self->map, upper_pose.v[0]);
+                upper_y0 = MAP_GYWY(self->map, upper_pose.v[1]);
+
+                double dist = sqrt(pow((x0 - upper_x0), 2.0) + pow((y0 - upper_y0), 2.0));
+
+                // Down weight all of the samples which are so far away from the leader
+                // according to the laser reading. When the laser reads a value of x, we
+                // don't need to worry a lot about samples from the other side of the map.
+                if (dist > 1.2 * obs_range){
+                    far_down_weight = true;
+                }
+
+                // Down weight the samples which are not aligned with the upper sample
+                // This comes from the assumption that we are following the leader and
+                // We should have almost the same bearings!
+                printf("FABS Bearing: %f\n Bearing 1: %f\nBearing 2: %f\n", fabs(sample->pose.v[2] - upper_pose.v[2]),
+                        sample->pose.v[2], upper_pose.v[2]);
+                if (fabs(sample->pose.v[2] - upper_pose.v[2]) > M_PI / 3){
+                    bearing_down_weight = true;
+                }
+#endif
+            } else { // When we don't have a sighting of the other robot
 
                 sample_abs_angle = atan2((pose.v[1] - upper_pose.v[1]), (pose.v[0] - upper_pose.v[0]));
                 sample_bearing = sample_abs_angle - upper_pose.v[2];
-
 
                 if(fabs(sample_bearing) > (28.5 * M_PI/180) ){ // Definitely outside the visible sector
                     // Sample is outside the angles of the field of vision.
@@ -447,13 +466,12 @@ double AMCLLaser::NestedBeamModel(pf_sample_t *upper_sample, AMCLLaserData *data
                     z = 0.0001;
                 }
 
-
                 else{ // Negative Weighting: Is in visible sector...so could be possibly visible (but is not, so should get very low weight)
 
                     double sample_range = 0;
 
                     sample_range = sqrt( (pose.v[1]-upper_pose.v[1])*(pose.v[1]-upper_pose.v[1])
-                                         + (pose.v[0]-upper_pose.v[0])*(pose.v[0]-upper_pose.v[0]) );
+                            + (pose.v[0]-upper_pose.v[0])*(pose.v[0]-upper_pose.v[0]) );
 
 
                     step = (data->range_count - 1) / (self->max_beams - 1);
@@ -471,7 +489,7 @@ double AMCLLaser::NestedBeamModel(pf_sample_t *upper_sample, AMCLLaserData *data
                         }
                     }
 
-                    if(i > 0 && i<data->range_count ){
+                    if(i > 0 && i < data->range_count){
                         double range1 = data->ranges[i][0];
                         double range2 = data->ranges[i-step][0];
 
@@ -514,16 +532,18 @@ double AMCLLaser::NestedBeamModel(pf_sample_t *upper_sample, AMCLLaserData *data
 
 
             } // end else (when there's no sighting of the other robot)
+#if PENALTY
+            if (far_down_weight){
+                pz = 0.0;
+                p *= 0;
+            }
 
+            if (bearing_down_weight){
+                pz = 0.0;
+                p *= 0;
+            }
+#endif
         } // end if (invalid MAP locations)
-
-
-        //    if(pz > 1.0){
-        //        pz = 1.0;
-        //    }
-        //    else if(pz<0.0){
-        //        pz = 0.0;
-        //    }
 
         assert(pz <= 1.0);
         assert(pz >= 0.0);
@@ -541,7 +561,7 @@ double AMCLLaser::NestedBeamModel(pf_sample_t *upper_sample, AMCLLaserData *data
         // calculated for the mean laser beam by the number of beams that hit the other robot.
         // This is mathematically sound...and should work correctly. This helps speed up processing.
         // The only foreseeable flaw is perhaps that the noise in observations is kind of removed in the process.
-        p += weighting_multiplier*(pz*pz*pz);
+        p += weighting_multiplier * (pz * pz * pz);
 
         sample->weight *= p;
         total_weight += sample->weight;
@@ -556,8 +576,8 @@ double AMCLLaser::NestedBeamModel(pf_sample_t *upper_sample, AMCLLaserData *data
 
 ////////////////////////////////////////////////////////////////////////////////
 // Determine the probability for the given pose
-// TODO: Implement advanced weighting procedure within the Beam Model
-double AMCLLaser::BeamModel_AW(AMCLLaserData *data, pf_sample_set_t* set, struct _pf_t * nested_pf_set )
+// TODO: Implemeknt advanced weighting procedure within the Beam Model
+double AMCLLaser::BeamModel_AW(AMCLLaserData *data, pf_sample_set_t* set, struct _pf_t * nested_pf_set)
 {
     AMCLLaser *self;
     int i, j, step;
@@ -595,7 +615,7 @@ double AMCLLaser::BeamModel_AW(AMCLLaserData *data, pf_sample_set_t* set, struct
 
             // Compute the range according to the map
             map_range = map_calc_range(self->map, pose.v[0], pose.v[1],
-                                       pose.v[2] + obs_bearing, data->range_max);
+                    pose.v[2] + obs_bearing, data->range_max);
             pz = 0.0;
 
             // Part 1: good, but noisy, hit

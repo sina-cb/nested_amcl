@@ -222,9 +222,27 @@ bool AMCLOdom::UpdateAction(pf_t *pf, AMCLSensorData *data)
 
         //getNestedParticlePose(&nested_odomData->pose, &nested_odomData->delta);
 
+        Sample sample_x;
+        sample_x.values.push_back(0);
+        if (hmm->initialized_()){
+            DETree result_alpha = hmm->forward(data->observations, 100);
+            Sampler sampler;
+            sample_x = sampler.sample(&result_alpha);
+        }
+
+        printf("\nDelta_X: %f\tSample Value: %f\tDelta Time (sec): %f\n\n",
+               (sample_x.values[0] * (data->time / 1000000000)),
+                sample_x.values[0],
+                data->time / 1000000000
+                );
+
         for(int i=0; i< set->sample_count; i++){
             nested_pf_sample = nested_pf_set + i;
-            this->UpdateNestedAction(nested_pf_sample, delta_trans, data->time, data->observations); //, (AMCLSensorData*)nested_odomData);
+
+            this->UpdateNestedAction(nested_pf_sample,
+                                     delta_trans,
+                                     (sample_x.values[0] * (data->time / 1000000000))
+                    );
         }
     }
     return true;
@@ -232,7 +250,7 @@ bool AMCLOdom::UpdateAction(pf_t *pf, AMCLSensorData *data)
 
 
 bool AMCLOdom::UpdateNestedAction(pf_t *pf, double upper_delta_trans,
-                                  double delta_t, vector<Observation> *obs){ //, AMCLSensorData *nested_odomData){
+                                  double delta_x){ //, AMCLSensorData *nested_odomData){
     // AMCLOdomData *ndata =
     //ndata = (AMCLOdomData*) data;
 
@@ -252,7 +270,7 @@ bool AMCLOdom::UpdateNestedAction(pf_t *pf, double upper_delta_trans,
         pf_vector_t old_pose = sample->pose;
 
         // get the new pose and delta in these passed arguments
-        getNestedParticlePose(&sample->pose, &delta, upper_delta_trans, delta_t, obs);
+        getNestedParticlePose(&sample->pose, &delta, upper_delta_trans, delta_x);
 
         pf->fake_nested_odomPose = sample->pose;
         pf->fake_nested_odomDelta = delta;
@@ -359,7 +377,7 @@ bool AMCLOdom::UpdateNestedAction(pf_t *pf, double upper_delta_trans,
 
         for(int i=0; i< set->sample_count; i++){
             nested_pf_sample = nested_pf_set + i;
-            this->UpdateNestedAction(nested_pf_sample, delta_trans, delta_t, obs); //, (AMCLSensorData*)nested_odomData);
+            this->UpdateNestedAction(nested_pf_sample, delta_trans, delta_x); //, (AMCLSensorData*)nested_odomData);
         }
     }
     return true;
@@ -368,34 +386,32 @@ bool AMCLOdom::UpdateNestedAction(pf_t *pf, double upper_delta_trans,
 
 // SINA: This method will propagate the odom
 void AMCLOdom::getNestedParticlePose(pf_vector_t *odom_pose, pf_vector_t *delta, double upper_delta_trans,
-                                     double delta_t, vector<Observation> *obs){
-
+                                     double delta_x){
     double dice = drand48() * 100;
-//    double nested_delta_trans = 0.0;
-//    double fixed_trans = 0.35;
+    //    double nested_delta_trans = 0.0;
+    //    double fixed_trans = 0.35;
 
-//    if(upper_delta_trans > 0.1){
-//        last_delta_trans = upper_delta_trans;
-//        nested_delta_trans = upper_delta_trans;
-//    }
-//    else{
-//        if(last_delta_trans == 0.0){
-//            nested_delta_trans = fixed_trans;
-//        }
-//        else{
-//            nested_delta_trans = last_delta_trans;
-//        }
-//    }
+    //    if(upper_delta_trans > 0.1){
+    //        last_delta_trans = upper_delta_trans;
+    //        nested_delta_trans = upper_delta_trans;
+    //    }
+    //    else{
+    //        if(last_delta_trans == 0.0){
+    //            nested_delta_trans = fixed_trans;
+    //        }
+    //        else{
+    //            nested_delta_trans = last_delta_trans;
+    //        }
+    //    }
 
-//    nested_delta_trans = 0.6 * nested_delta_trans; //reducing to 60% from observed behaviour
-
-    DETree result_alpha = hmm->forward(obs, 100);
-    Sampler sampler;
-
-    Sample sample = sampler.sample(&result_alpha);
-    printf("\n\n\n\n\nSAMPLE: %f\n\n\n\n\n\n", sample.values[0]);
+    //    nested_delta_trans = 0.6 * nested_delta_trans; //reducing to 60% from observed behaviour
 
     double map_range = map_calc_range(this->map, odom_pose->v[0], odom_pose->v[1], odom_pose->v[2], 10);
+
+    // Cap the maximum delta_x that the robot can have in a single time step
+    if (delta_x > 0.4){
+        delta_x = 0.4;
+    }
 
     if(map_range < 1){
         if(dice <= 50){
@@ -411,8 +427,8 @@ void AMCLOdom::getNestedParticlePose(pf_vector_t *odom_pose, pf_vector_t *delta,
         }
     }
     else{
-        delta->v[0] = cos(odom_pose->v[2]) * 10;//nested_delta_trans;
-        delta->v[1] = sin(odom_pose->v[2]) * 10;//nested_delta_trans;
+        delta->v[0] = cos(odom_pose->v[2]) * delta_x; //nested_delta_trans;
+        delta->v[1] = sin(odom_pose->v[2]) * delta_x; //nested_delta_trans;
         delta->v[2] = 0.00;
     }
 

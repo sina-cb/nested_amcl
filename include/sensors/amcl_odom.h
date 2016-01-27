@@ -80,11 +80,11 @@ class AMCLOdom : public AMCLSensor
   // Update the nested filter based on the action model.  Returns true if the filter
   // has been updated.
   public: virtual bool UpdateNestedAction(pf_t *nested_pf, double upper_delta_trans,
-                                          double delta_t, vector<Observation> *obs); //, AMCLSensorData *nested_odomData);
+                                          double delta_x); //, AMCLSensorData *nested_odomData);
 
   // Generates fake odom delta based on a behaviour model
   void getNestedParticlePose(pf_vector_t *odom_pose, pf_vector_t *delta, double delta_trans,
-                             double delta_t, vector<Observation> *obs);
+                             double delta_x);
 
   // Current data timestamp
   private: double time;

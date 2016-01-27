@@ -808,7 +808,7 @@ void AmclNode::reconfigureCB(AMCLConfig &config, uint32_t level)
 void AmclNode::learn_HMM(){
     int max_iterations = 1;
     int N = 30;
-//    hmm.learn_hmm(&observations, max_iterations, N);
+    //    hmm.learn_hmm(&observations, max_iterations, N);
 
     for (size_t i = 0; i < pi_.size(); i++){
         pi_[i].p = 1.0 / pi_.size();
@@ -823,6 +823,68 @@ void AmclNode::learn_HMM(){
     }
 
     hmm.set_distributions(&pi_, &m_, &v_, 0.5);
+}
+
+void AmclNode::collect_sample(geometry_msgs::PoseWithCovarianceStamped *our_pose,
+                              double landmark_r, double landmark_phi){
+
+    double delta_x = our_pose->pose.pose.position.x - previous_time_pose.pose.pose.position.x;
+    delta_x *= delta_x;
+    delta_x += pow(our_pose->pose.pose.position.y - previous_time_pose.pose.pose.position.y, 2.0);
+    delta_x = sqrt(delta_x);
+
+    if (landmark_r_sample != -1 && landmark_phi_sample != -1){
+        ros::Time current_sampling_time = ros::Time::now();
+
+        ROS_INFO("Current pose: %f %f %f", our_pose->pose.pose.position.x,
+                 our_pose->pose.pose.position.y, our_pose->pose.pose.orientation.w);
+
+        ROS_INFO("Landmark_R: %f, Landmark_Phi: %f", landmark_r, landmark_phi);
+
+        Observation obs;
+        obs.values.push_back(landmark_r);
+
+        observations.push_back(obs);
+
+        if (observations.size() > 1){
+            double delta_t = current_sampling_time.nsec - last_sampling_time.nsec;
+            delta_t /= 1000000000.0;
+
+            double current_velocity = ((landmark_r + delta_x)
+                                       - observations[observations.size() - 2].values[0]) / delta_t;
+
+            ROS_INFO ("Velocity: %f (LastTime: %d, Now: %d)", current_velocity,
+                      last_sampling_time.nsec / 1000000000, current_sampling_time.nsec / 1000000000);
+
+            Sample temp_m_sample;
+            temp_m_sample.values.push_back(current_velocity);
+            temp_m_sample.values.push_back(last_velocity);
+            m_.push_back(temp_m_sample);
+            last_velocity = current_velocity;
+
+            Sample temp_v_sample;
+            temp_v_sample.values.push_back(landmark_r);
+            temp_v_sample.values.push_back(current_velocity);
+            v_.push_back(temp_v_sample);
+        }
+
+        collected_sample++;
+
+        ROS_INFO("Collected samples: %d", collected_sample);
+
+        if (collected_sample >= 5){
+            collected_sample = 0;
+            learn_criteria = true;
+
+            ROS_INFO("Let's learn something!");
+        }
+
+        landmark_r_sample = -1;
+        landmark_phi_sample = -1;
+
+        last_sampling_time = current_sampling_time;
+    }
+
 }
 
 // init the variable bounds in the HMM (the variables are continuous, but we assume they are bounded)
@@ -1676,8 +1738,11 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
                                );
             landmark_r = 0;
             landmark_phi = 0;
-            init_leader_pose_[0] = init_leader_pose_[1] = init_leader_pose_[2] = 0.0;
-            init_leader_cov_[0] = init_leader_cov_[1] = init_leader_cov_[2] = 0.0;
+
+            if (total_nested_particle_count > 0){
+                init_leader_pose_[0] = init_leader_pose_[1] = init_leader_pose_[2] = 0.0;
+                init_leader_cov_[0] = init_leader_cov_[1] = init_leader_cov_[2] = 0.0;
+            }
 
             resampled = true;
         }
@@ -2084,68 +2149,6 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
                                  last_published_pose.pose.covariance[6*5+5]);
             save_pose_last_time = now;
         }
-    }
-
-}
-
-void AmclNode::collect_sample(geometry_msgs::PoseWithCovarianceStamped *our_pose,
-                                double landmark_r, double landmark_phi){
-
-    double delta_x = our_pose->pose.pose.position.x - previous_time_pose.pose.pose.position.x;
-    delta_x *= delta_x;
-    delta_x += pow(our_pose->pose.pose.position.y - previous_time_pose.pose.pose.position.y, 2.0);
-    delta_x = sqrt(delta_x);
-
-    if (landmark_r_sample != -1 && landmark_phi_sample != -1){
-        ros::Time current_sampling_time = ros::Time::now();
-
-        ROS_INFO("Current pose: %f %f %f", our_pose->pose.pose.position.x,
-                 our_pose->pose.pose.position.y, our_pose->pose.pose.orientation.w);
-
-        ROS_INFO("Landmark_R: %f, Landmark_Phi: %f", landmark_r, landmark_phi);
-
-        Observation obs;
-        obs.values.push_back(landmark_r);
-
-        observations.push_back(obs);
-
-        if (observations.size() > 1){
-            double delta_t = current_sampling_time.nsec - last_sampling_time.nsec;
-            delta_t /= 1000000000.0;
-
-            double current_velocity = ((landmark_r + delta_x)
-                                       - observations[observations.size() - 2].values[0]) / delta_t;
-
-            ROS_INFO ("Velocity: %f (LastTime: %d, Now: %d)", current_velocity,
-                      last_sampling_time.nsec / 1000000000, current_sampling_time.nsec / 1000000000);
-
-            Sample temp_m_sample;
-            temp_m_sample.values.push_back(current_velocity);
-            temp_m_sample.values.push_back(last_velocity);
-            m_.push_back(temp_m_sample);
-            last_velocity = current_velocity;
-
-            Sample temp_v_sample;
-            temp_v_sample.values.push_back(landmark_r);
-            temp_v_sample.values.push_back(current_velocity);
-            v_.push_back(temp_v_sample);
-        }
-
-        collected_sample++;
-
-        ROS_INFO("Collected samples: %d", collected_sample);
-
-        if (collected_sample >= 5){
-            collected_sample = 0;
-            learn_criteria = true;
-
-            ROS_INFO("Let's learn something!");
-        }
-
-        landmark_r_sample = -1;
-        landmark_phi_sample = -1;
-
-        last_sampling_time = current_sampling_time;
     }
 
 }
