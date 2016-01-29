@@ -230,10 +230,10 @@ bool AMCLOdom::UpdateAction(pf_t *pf, AMCLSensorData *data)
             sample_x = sampler.sample(&result_alpha);
         }
 
-        printf("\nDelta_X: %f\tSample Value: %f\tDelta Time (sec): %f\n\n",
-               (sample_x.values[0] * (data->time / 1000000000)),
+        printf("\n\tSample Velocity: %f  Delta Time (sec): %f  Delta_X: %f\n\n",
                 sample_x.values[0],
-                data->time / 1000000000
+                data->time / 1000000000,
+                (sample_x.values[0] * (data->time / 1000000000))
                 );
 
         for(int i=0; i< set->sample_count; i++){

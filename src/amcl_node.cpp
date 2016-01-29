@@ -836,10 +836,10 @@ void AmclNode::collect_sample(geometry_msgs::PoseWithCovarianceStamped *our_pose
     if (landmark_r_sample != -1 && landmark_phi_sample != -1){
         ros::Time current_sampling_time = ros::Time::now();
 
-        ROS_INFO("Current pose: %f %f %f", our_pose->pose.pose.position.x,
+        ROS_DEBUG("Current pose: %f %f %f", our_pose->pose.pose.position.x,
                  our_pose->pose.pose.position.y, our_pose->pose.pose.orientation.w);
 
-        ROS_INFO("Landmark_R: %f, Landmark_Phi: %f", landmark_r, landmark_phi);
+        ROS_DEBUG("Landmark_R: %f, Landmark_Phi: %f", landmark_r, landmark_phi);
 
         Observation obs;
         obs.values.push_back(landmark_r);
@@ -853,7 +853,7 @@ void AmclNode::collect_sample(geometry_msgs::PoseWithCovarianceStamped *our_pose
             double current_velocity = ((landmark_r + delta_x)
                                        - observations[observations.size() - 2].values[0]) / delta_t;
 
-            ROS_INFO ("Velocity: %f (LastTime: %d, Now: %d)", current_velocity,
+            ROS_DEBUG("Velocity: %f (LastTime: %d, Now: %d)", current_velocity,
                       last_sampling_time.nsec / 1000000000, current_sampling_time.nsec / 1000000000);
 
             Sample temp_m_sample;
@@ -870,13 +870,13 @@ void AmclNode::collect_sample(geometry_msgs::PoseWithCovarianceStamped *our_pose
 
         collected_sample++;
 
-        ROS_INFO("Collected samples: %d", collected_sample);
+        ROS_DEBUG("Collected samples: %d", collected_sample);
 
         if (collected_sample >= 5){
             collected_sample = 0;
             learn_criteria = true;
 
-            ROS_INFO("Let's learn something!");
+            ROS_DEBUG("Let's learn something!");
         }
 
         landmark_r_sample = -1;
@@ -1784,7 +1784,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
         normal_MSE = squared_error / set->sample_count ;
         normal_RootMSE = sqrt(normal_MSE);
 
-        ROS_INFO("normal_MSE: %f", normal_MSE);
+        ROS_DEBUG("normal_MSE: %f", normal_MSE);
 
         particlecloud_pub_.publish(cloud_msg);
 
@@ -1854,7 +1854,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
 
             nested_MSE = nested_squaredError / curr_total_nested_particle_count;
             nested_RootMSE = sqrt(nested_MSE);
-            ROS_INFO("Nested normal_MSE: %f", nested_MSE);
+            ROS_DEBUG("Nested normal_MSE: %f", nested_MSE);
 
             nested_particlecloud_pub_.publish(nested_cloud_msg);
 

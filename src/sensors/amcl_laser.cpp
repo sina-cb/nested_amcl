@@ -40,7 +40,7 @@
 #define LASER_WEIGHTAGE 1
 #define COLOR_WEIGHTAGE 0
 
-#define PENALTY 1
+#define PENALTY 0
 
 using namespace amcl;
 
@@ -215,7 +215,7 @@ double AMCLLaser::BeamModel(AMCLLaserData *data, pf_sample_set_t* set)
         total_weight += sample->weight;
     }
 
-    return(total_weight);
+    return total_weight;
 }
 
 double AMCLLaser::LikelihoodFieldModel(AMCLLaserData *data, pf_sample_set_t* set)
@@ -344,8 +344,6 @@ double AMCLLaser::LikelihoodFieldModel(AMCLLaserData *data, pf_sample_set_t* set
 
     return(total_weight);
 }
-
-
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -567,6 +565,10 @@ double AMCLLaser::NestedBeamModel(pf_sample_t *upper_sample, AMCLLaserData *data
         total_weight += sample->weight;
 
     } // end looping through all samples
+
+    if (total_weight < 0.01){
+        printf("\n\nAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAaa\n\n");
+    }
 
     return(total_weight);
 }

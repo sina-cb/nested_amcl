@@ -452,7 +452,7 @@ void pf_update_nested_sensor(pf_t *pf,
     // Compute sample weights for Nested particles
     if(pf->nesting_lvl > 0 && pf->max_nested_samples > 0){
         int i = 0;
-        int nested_total = 0;
+        double nested_total = 0;
         pf_t *nested_pf;
         pf_sample_set_t nested_set;
 
@@ -466,11 +466,11 @@ void pf_update_nested_sensor(pf_t *pf,
             nested_pf = nested_pf_set + i;
 
             if(nested_pf->max_samples > 0){
-                nested_set = nested_pf->sets[nested_pf_set->current_set]; //TODO KPM: this should be [nested_pf->current_set]
+                nested_set = nested_pf->sets[nested_pf->current_set]; //TODO KPM: this should be [nested_pf->current_set]
                 // Compute the weights for the nested set
                 nested_total = (*nested_sensor_fn) (sample, sensor_data, &nested_set);
                 // Normalize the weights for the nested set
-                normalize_weights(nested_total, nested_pf_set);
+                normalize_weights(nested_total, nested_pf);
             }
         }
     }
@@ -519,8 +519,6 @@ static void normalize_weights(double total, pf_t* pf){
     }
     else
     {
-        //PLAYER_WARN("pdf has zero probability");
-
         // Handle zero total
         for (i = 0; i < set->sample_count; i++)
         {
@@ -1206,29 +1204,6 @@ void pf_update_nested_adaptive_resample(pf_t *pf, double landmark_r, double land
     i = 0;
     m = 0;
 
-    int drand_r = 0;
-
-    double total_weight_a = 0.0;
-    for (i = 0; i < set_a->sample_count; i++){
-        total_weight_a += set_a->samples[i].weight;
-    }
-
-    if (total_weight_a < 0.01){
-        printf("SET_A ALL ZEROOOOO!!!!!\n\n\n\n");
-        double P = 1.0 / set_a->sample_count;
-        pf_sample_t *sample_nearest = set_a->samples + 0;
-        double nearest_dist = sqrt(pow(sample_nearest->pose.v[0] - upper_particle_pose.v[0], 2.0) +
-                pow(sample_nearest->pose.v[1] - upper_particle_pose.v[1], 2.0)) - landmark_r;
-        for (i = 0; i < set_a->sample_count; i++){
-            double temp_dist = sqrt(pow(set_a->samples[i].pose.v[0] - upper_particle_pose.v[0], 2.0) +
-                    pow(set_a->samples[i].pose.v[1] - upper_particle_pose.v[1], 2.0)) - landmark_r;
-            if (temp_dist < nearest_dist){
-                sample_nearest = set_a->samples + i;
-            }
-        }
-        sample_nearest->weight = 1.0;
-    }
-
     i = 0;
     while(set_b->sample_count < M)
     {
@@ -1546,12 +1521,14 @@ pf_vector_t nested_dual_fn(void* arg, double landmark_r, double landmark_phi, pf
 
     do{
 
-        gamma = drand48() * 2 * M_PI;
+        // SINA: The dual samples are aligned with the follower's orientation
+        //       with a PI/6 deviation
+        gamma = upper_particle_pose.v[2] + (drand48() * M_PI/3 - M_PI / 6.0);
 
         return_pose.v[0] = hit.v[0] + pf_ran_gaussian(size_of_turtlebot/2);
         return_pose.v[1] = hit.v[1] + pf_ran_gaussian(size_of_turtlebot/2);
 
-        return_pose.v[2] = gamma - M_PI;
+        return_pose.v[2] = gamma;
 
         x1 = MAP_GXWX(map, return_pose.v[0]);
         y1 = MAP_GYWY(map, return_pose.v[1]);
