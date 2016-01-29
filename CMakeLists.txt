@@ -67,7 +67,7 @@ catkin_package(
   LIBRARIES amcl_sensors amcl_map amcl_pf
 )
 
-include_directories(include/amcl include/map include/sensors include/pf include/MCFHMM)
+include_directories(include/amcl include/map include/sensors include/pf MCFHMM/include)
 include_directories(${catkin_INCLUDE_DIRS} ${Boost_INCLUDE_DIRS})
 
 add_library(nested_amcl_pf
@@ -91,21 +91,21 @@ add_library(nested_amcl_sensors
                     src/sensors/amcl_laser.cpp)
 
 add_library(MCFHMM_lib
-					src/MCFHMM/Sampler.cpp
-					src/MCFHMM/MCFHMM.cpp
-					src/MCFHMM/DETree.cpp
-					src/MCFHMM/Sample.cpp
-					src/MCFHMM/Observation.cpp
-					src/MCFHMM/Timer.cpp)
+					MCFHMM/src/Sampler.cpp
+					MCFHMM/src/MCFHMM.cpp
+					MCFHMM/src/DETree.cpp
+					MCFHMM/src/Sample.cpp
+					MCFHMM/src/Observation.cpp
+					MCFHMM/src/Timer.cpp)
 
 
 set(MCFHMM_HDRs
-	include/MCFHMM/Sampler.h
-	include/MCFHMM/MCFHMM.h
-	include/MCFHMM/DETree.h
-	include/MCFHMM/Sample.h
-	include/MCFHMM/Observation.h
-	include/MCFHMM/Timer.h
+	MCFHMM/include/Sampler.h
+	MCFHMM/include/MCFHMM.h
+	MCFHMM/include/DETree.h
+	MCFHMM/include/Sample.h
+	MCFHMM/include/Observation.h
+	MCFHMM/include/Timer.h
 )
 
 set(nested_amcl_pf_HDRs
