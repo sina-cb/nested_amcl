@@ -24,6 +24,9 @@
 #include <vector>
 #include <map>
 
+// Signal handling
+#include <signal.h>
+
 //KPM
 #include <cmath>
 
@@ -314,7 +317,7 @@ private:
 
     ros::NodeHandle nh_;
     ros::NodeHandle private_nh_;
-    ros::Publisher pose_pub_;
+    ros::Publisher  pose_pub_;
     //    ros::Publisher true_pose_pub_;
     ros::Publisher particlecloud_pub_;
 
@@ -378,6 +381,14 @@ std::vector<std::pair<int,int> > AmclNode::free_space_indices;
 
 #define USAGE "USAGE: nested_amcl"
 
+boost::shared_ptr<AmclNode> amcl_node_ptr;
+
+void sigintHandler(int sig)
+{
+  // Save latest pose as we're shutting down.
+  ros::shutdown();
+}
+
 int
 main(int argc, char** argv)
 {
@@ -388,9 +399,15 @@ main(int argc, char** argv)
     ros::init(argc, argv, "nested_amcl");
     ros::NodeHandle nh;
 
+    // Override default sigint handler
+    signal(SIGINT, sigintHandler);
+
     AmclNode an;
 
     ros::spin();
+
+    // Without this, our boost locks are not shut down nicely
+    amcl_node_ptr.reset();
 
     // To quote Morgan, Hooray!
     return(0);
@@ -449,7 +466,7 @@ AmclNode::AmclNode() :
 
     private_nh_.param("laser_min_range", laser_min_range_, -1.0);
     private_nh_.param("laser_max_range", laser_max_range_, 4.0);
-    private_nh_.param("laser_max_beams", max_beams_, 60);
+    private_nh_.param("laser_max_beams", max_beams_, 640);
     private_nh_.param("min_particles", min_particles_, 1);
     private_nh_.param("max_particles", max_particles_, 2);
 
@@ -715,7 +732,9 @@ void AmclNode::reconfigureCB(AMCLConfig &config, uint32_t level)
 
     transform_tolerance_.fromSec(config.transform_tolerance);
 
-    max_beams_ = config.laser_max_beams;
+//    max_beams_ = config.laser_max_beams;
+    ROS_INFO("Max Beam changed to 640!");
+    max_beams_ = 640;
     alpha1_ = config.odom_alpha1;
     alpha2_ = config.odom_alpha2;
     alpha3_ = config.odom_alpha3;
@@ -2184,7 +2203,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
                         nested_hyps[nested_max_weight_hyp].pf_pose_mean.v[2]
                         );
 
-            if (nested_max_weight > 0){
+            if (nested_max_weight > 0 && nested_hyps.size() > 0){
 
                 geometry_msgs::PoseWithCovarianceStamped nested_p;
                 // Fill in the header
@@ -2224,24 +2243,23 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
                 ROS_INFO("No Nested Pose Available!");
             }
 
-            if (nested_hyps.size() > 0){
-                tf::Transform tmp_tf;
-                tmp_tf.setOrigin(tf::Vector3(nested_last_published_pose.pose.pose.position.x,
-                                                            nested_last_published_pose.pose.pose.position.y,
-                                                            0
-                                                            ));
-                tf::Quaternion q;
-                q.setRPY(0, 0, nested_last_published_pose.pose.pose.orientation.w);
-                tmp_tf.setRotation(q);
 
-                ros::Time nested_transform_expiration = (laser_scan->header.stamp +
-                                                  transform_tolerance_);
-                tf::StampedTransform nested_tmp_tf_stamped(tmp_tf,
-                                                           nested_transform_expiration,
-                                                           global_frame_id_, nested_odom_frame_id_);
+            tf::Transform tmp_tf;
+            tmp_tf.setOrigin(tf::Vector3(nested_last_published_pose.pose.pose.position.x,
+                                         nested_last_published_pose.pose.pose.position.y,
+                                         0
+                                         ));
+            tf::Quaternion q;
+            q.setRPY(0, 0, nested_last_published_pose.pose.pose.orientation.w);
+            tmp_tf.setRotation(q);
 
-                this->tfb_->sendTransform(nested_tmp_tf_stamped);
-            }
+            ros::Time nested_transform_expiration = (laser_scan->header.stamp +
+                                                     transform_tolerance_);
+            tf::StampedTransform nested_tmp_tf_stamped(tmp_tf,
+                                                       nested_transform_expiration,
+                                                       global_frame_id_, nested_odom_frame_id_);
+
+            this->tfb_->sendTransform(nested_tmp_tf_stamped);
         }
 
         collect_sample(&last_published_pose, &nested_last_published_pose, landmark_r, landmark_phi);
