@@ -179,6 +179,7 @@ private:
     double              last_velocity;
     ros::Time           last_sampling_time;
     geometry_msgs::PoseWithCovarianceStamped previous_time_pose;
+    geometry_msgs::PoseWithCovarianceStamped previous_time_nested_pose;
 
     //    double get_landmark_r();
 
@@ -223,7 +224,9 @@ private:
     void learn_HMM();
 
     /* SINA: This method is called to collect an observation based on the application */
-    void collect_sample(geometry_msgs::PoseWithCovarianceStamped* our_pose, double landmark_r, double landmark_phi);
+    void collect_sample(geometry_msgs::PoseWithCovarianceStamped* our_pose,
+                        geometry_msgs::PoseWithCovarianceStamped* leader_pose,
+                        double landmark_r, double landmark_phi);
 
     // Message callbacks
     bool globalLocalizationCallback(std_srvs::Empty::Request& req,
@@ -249,6 +252,13 @@ private:
     std::string base_frame_id_;
     std::string global_frame_id_;
 
+    // SINA: used to keep the nested odom frame_id
+    //parameter for what odom to use
+    std::string nested_odom_frame_id_;
+
+    // Used to store the features like crosswalk and junction data
+    std::string feature_filename;
+
     bool use_map_topic_;
     bool first_map_only_;
 
@@ -257,6 +267,8 @@ private:
     ros::Duration save_pose_period;
 
     geometry_msgs::PoseWithCovarianceStamped last_published_pose;
+
+    geometry_msgs::PoseWithCovarianceStamped nested_last_published_pose;
 
     map_t* map_;
     map_t* color_map;
@@ -306,6 +318,7 @@ private:
     //    ros::Publisher true_pose_pub_;
     ros::Publisher particlecloud_pub_;
 
+    ros::Publisher nested_pose_pub_;
     ros::Publisher nested_particlecloud_pub_; // For publishing cloud of nested particles
 
     ros::Publisher npf_data_pub_; // For publishing NPF data
@@ -577,9 +590,12 @@ AmclNode::AmclNode() :
         odom_model_type_ = ODOM_MODEL_DIFF;
     }
 
+    private_nh_.param("feature_filename", feature_filename, std::string(""));
+
     private_nh_.param("update_min_d", d_thresh_, 0.25);
     private_nh_.param("update_min_a", a_thresh_, M_PI/6.0);
     private_nh_.param("odom_frame_id", odom_frame_id_, std::string("odom"));
+    private_nh_.param("nested_odom_frame_id", nested_odom_frame_id_, std::string("nested_odom"));
     private_nh_.param("base_frame_id", base_frame_id_, std::string("base_link"));
     private_nh_.param("global_frame_id", global_frame_id_, std::string("/map"));
     private_nh_.param("resample_interval", resample_interval_, 1);
@@ -612,6 +628,8 @@ AmclNode::AmclNode() :
     pose_pub_ = nh_.advertise<geometry_msgs::PoseWithCovarianceStamped>("amcl_pose", 2);
     //true_pose_pub_ = nh_.advertise<geometry_msgs::PoseStamped>("true_pose", 2);
     particlecloud_pub_ = nh_.advertise<geometry_msgs::PoseArray>("particlecloud", 2);
+
+    nested_pose_pub_ = nh_.advertise<geometry_msgs::PoseWithCovarianceStamped>("nested_amcl_pose", 2);
     nested_particlecloud_pub_ = nh_.advertise<geometry_msgs::PoseArray>("nested_particlecloud", 2);
 
     npf_data_pub_ = nh_.advertise<std_msgs::String>("nested_amcl_data", 2);
@@ -826,10 +844,18 @@ void AmclNode::learn_HMM(){
 }
 
 void AmclNode::collect_sample(geometry_msgs::PoseWithCovarianceStamped *our_pose,
+                              geometry_msgs::PoseWithCovarianceStamped *leader_pose,
                               double landmark_r, double landmark_phi){
 
-    double delta_x = our_pose->pose.pose.position.x - previous_time_pose.pose.pose.position.x;
-    delta_x *= delta_x;
+    ROS_INFO("Leader Pose: %f\t%f\t%f", leader_pose->pose.pose.position.x,
+             leader_pose->pose.pose.position.y,
+             leader_pose->pose.pose.orientation.w);
+
+    ROS_INFO("Our Pose: %f\t%f\t%f", our_pose->pose.pose.position.x,
+             our_pose->pose.pose.position.y,
+             our_pose->pose.pose.orientation.w);
+
+    double delta_x = pow(our_pose->pose.pose.position.x - previous_time_pose.pose.pose.position.x, 2.0);
     delta_x += pow(our_pose->pose.pose.position.y - previous_time_pose.pose.pose.position.y, 2.0);
     delta_x = sqrt(delta_x);
 
@@ -837,7 +863,7 @@ void AmclNode::collect_sample(geometry_msgs::PoseWithCovarianceStamped *our_pose
         ros::Time current_sampling_time = ros::Time::now();
 
         ROS_DEBUG("Current pose: %f %f %f", our_pose->pose.pose.position.x,
-                 our_pose->pose.pose.position.y, our_pose->pose.pose.orientation.w);
+                  our_pose->pose.pose.position.y, our_pose->pose.pose.orientation.w);
 
         ROS_DEBUG("Landmark_R: %f, Landmark_Phi: %f", landmark_r, landmark_phi);
 
@@ -970,8 +996,10 @@ AmclNode::handleMapMessage(const nav_msgs::OccupancyGrid& msg)
 
     freeMapDependentMemory();
 
-    map_ = convertMap(msg,100,false);
-    color_map = convertMap(msg,50,true);
+    map_ = convertMap(msg, 100, false);
+    map_feature_load(map_, feature_filename.c_str());
+
+    color_map = convertMap(msg, 50, true);
 
 #if NEW_UNIFORM_SAMPLING
     ROS_INFO("NEW_UNIFORM_SAMPLING is %d",NEW_UNIFORM_SAMPLING);
@@ -1904,6 +1932,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
         int max_weight_hyp = -1;
         std::vector<amcl_hyp_t> hyps;
         hyps.resize(pf_->sets[pf_->current_set].cluster_count);
+
         for(int hyp_count = 0;
             hyp_count < pf_->sets[pf_->current_set].cluster_count; hyp_count++)
         {
@@ -1991,8 +2020,6 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
             previous_time_pose = last_published_pose;
             last_published_pose = p;
 
-            collect_sample(&last_published_pose, landmark_r_sample, landmark_phi_sample);
-
 #if COLLECT_DATA
             // Data Collection method
             log_data(p);
@@ -2006,16 +2033,16 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
             //            tf::quaternionTFToMsg(tf::createQuaternionFromYaw(hyps[max_weight_hyp].pf_pose_mean.v[2]),
             //                                  true_pose.orientation);
 
-            geometry_msgs::PoseStamped true_pose;
-            true_pose.header.frame_id = global_frame_id_;
-            true_pose.header.stamp = laser_scan->header.stamp + transform_tolerance_;
+            //            geometry_msgs::PoseStamped true_pose;
+            //            true_pose.header.frame_id = global_frame_id_;
+            //            true_pose.header.stamp = laser_scan->header.stamp + transform_tolerance_;
 
-            true_pose.pose.position.x = true_pose_normal.v[0]+0.0;
-            true_pose.pose.position.y = true_pose_normal.v[1]-0.0;
-            true_pose.pose.position.z = 0.0;
+            //            true_pose.pose.position.x = true_pose_normal.v[0]+0.0;
+            //            true_pose.pose.position.y = true_pose_normal.v[1]-0.0;
+            //            true_pose.pose.position.z = 0.0;
 
-            tf::quaternionTFToMsg(tf::createQuaternionFromYaw(hyps[max_weight_hyp].pf_pose_mean.v[2]),
-                    true_pose.pose.orientation);
+            //            tf::quaternionTFToMsg(tf::createQuaternionFromYaw(hyps[max_weight_hyp].pf_pose_mean.v[2]),
+            //                    true_pose.pose.orientation);
 
             //            true_pose.pose.orientation.x = 0.0;
             //            true_pose.pose.orientation.y = 0.0;
@@ -2113,6 +2140,112 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
         {
             ROS_ERROR("No pose!");
         }
+
+        // Calculate the best hypothesis form the nested particles
+        if (nesting_lvl_ > 0){
+            // Read out the current hypotheses
+            double nested_max_weight = 0.0;
+            int nested_max_weight_hyp = -1;
+            std::vector<amcl_hyp_t> nested_hyps;
+
+            // TODO
+            pf_t *nested_pf_ = pf_get_this_nested_set(pf_, pf_->current_set);
+
+            nested_hyps.resize(nested_pf_->sets[pf_->current_set].cluster_count);
+            for(int hyp_count = 0;
+                hyp_count < nested_pf_->sets[pf_->current_set].cluster_count; hyp_count++)
+            {
+                double nested_weight;
+                pf_vector_t nested_pose_mean;
+                pf_matrix_t nested_pose_cov;
+                if (!pf_get_cluster_stats(nested_pf_, hyp_count, &nested_weight, &nested_pose_mean, &nested_pose_cov))
+                {
+                    ROS_ERROR("Couldn't get stats on cluster %d", hyp_count);
+                    break;
+                }
+
+                nested_hyps[hyp_count].weight = nested_weight;
+                nested_hyps[hyp_count].pf_pose_mean = nested_pose_mean;
+                nested_hyps[hyp_count].pf_pose_cov = nested_pose_cov;
+
+                if(nested_hyps[hyp_count].weight > nested_max_weight)
+                {
+                    nested_max_weight = nested_hyps[hyp_count].weight;
+                    nested_max_weight_hyp = hyp_count;
+                }
+            }
+
+            ROS_DEBUG("HYP Count: %d", nested_pf_->sets[pf_->current_set].cluster_count);
+            if (nested_hyps.size() > 0)
+                ROS_DEBUG("Hyps: weigt: %f\tPose[0]: %f\tPose[1]: %f\tPose[2]: %f",
+                          nested_max_weight,
+                          nested_hyps[nested_max_weight_hyp].pf_pose_mean.v[0],
+                        nested_hyps[nested_max_weight_hyp].pf_pose_mean.v[1],
+                        nested_hyps[nested_max_weight_hyp].pf_pose_mean.v[2]
+                        );
+
+            if (nested_max_weight > 0){
+
+                geometry_msgs::PoseWithCovarianceStamped nested_p;
+                // Fill in the header
+                nested_p.header.frame_id = global_frame_id_;
+                nested_p.header.stamp = laser_scan->header.stamp;
+
+                // Copy in the pose
+
+                /* Best estimate of pose by amcl -- this is the actual AMCL pose we need */
+                nested_p.pose.pose.position.x = nested_hyps[max_weight_hyp].pf_pose_mean.v[0];
+                nested_p.pose.pose.position.y = nested_hyps[max_weight_hyp].pf_pose_mean.v[1];
+
+                tf::quaternionTFToMsg(tf::createQuaternionFromYaw(nested_hyps[nested_max_weight_hyp].pf_pose_mean.v[2]),
+                        nested_p.pose.pose.orientation);
+                // Copy in the covariance, converting from 3-D to 6-D
+                pf_sample_set_t* nested_set = pf_get_this_nested_set(pf_, pf_->current_set)->sets + pf_->current_set;
+                for(int i = 0; i < 2; i++)
+                {
+                    for(int j = 0; j < 2; j++)
+                    {
+                        // Report the overall filter covariance, rather than the
+                        // covariance for the highest-weight cluster
+                        //p.covariance[6*i+j] = hyps[max_weight_hyp].pf_pose_cov.m[i][j];
+                        nested_p.pose.covariance[6 * i + j] = nested_set->cov.m[i][j];
+                    }
+                }
+                // Report the overall filter covariance, rather than the
+                // covariance for the highest-weight cluster
+                // nested_p.covariance[6 * 5 + 5] = hyps[max_weight_hyp].pf_pose_cov.m[2][2];
+                nested_p.pose.covariance[6 * 5 + 5] = nested_set->cov.m[2][2];
+
+                // Publish amcl's best estimate for current pose
+                nested_pose_pub_.publish(nested_p);
+                previous_time_nested_pose = nested_last_published_pose;
+                nested_last_published_pose = nested_p;
+            }else{
+                ROS_INFO("No Nested Pose Available!");
+            }
+
+            if (nested_hyps.size() > 0){
+                tf::Transform tmp_tf;
+                tmp_tf.setOrigin(tf::Vector3(nested_last_published_pose.pose.pose.position.x,
+                                                            nested_last_published_pose.pose.pose.position.y,
+                                                            0
+                                                            ));
+                tf::Quaternion q;
+                q.setRPY(0, 0, nested_last_published_pose.pose.pose.orientation.w);
+                tmp_tf.setRotation(q);
+
+                ros::Time nested_transform_expiration = (laser_scan->header.stamp +
+                                                  transform_tolerance_);
+                tf::StampedTransform nested_tmp_tf_stamped(tmp_tf,
+                                                           nested_transform_expiration,
+                                                           global_frame_id_, nested_odom_frame_id_);
+
+                this->tfb_->sendTransform(nested_tmp_tf_stamped);
+            }
+        }
+
+        collect_sample(&last_published_pose, &nested_last_published_pose, landmark_r, landmark_phi);
+
     }
     else if(latest_tf_valid_)
     {

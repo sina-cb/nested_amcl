@@ -1648,14 +1648,14 @@ pf_t* pf_get_this_nested_set(pf_t *pf, int current_set){
         /*
         if(pf->nested_pf_set_0 == NULL)
             pf->nested_pf_set_0 = calloc(pf->max_samples, sizeof(pf_t));
-*/
+        */
         return pf->nested_pf_set_0;
     }
     else{
         /*
         if(pf->nested_pf_set_1 == NULL)
             pf->nested_pf_set_1 = calloc(pf->max_samples, sizeof(pf_t));
-*/
+        */
         return pf->nested_pf_set_1;
     }
 }

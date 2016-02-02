@@ -29,6 +29,8 @@
 #define MAP_H
 
 #include <stdint.h>
+#include <stdio.h>
+#include "pf_vector.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -41,6 +43,34 @@ struct _rtk_fig_t;
 // Limits
 #define MAP_WIFI_MAX_LEVELS 8
 
+// SINA: This is to hold the information for one Crosswalk feature
+typedef struct
+{
+    double x;
+    double y;
+} cross_walk_t;
+
+// SINA: This is to hold the information for one TurnPoint feature
+typedef struct
+{
+    double x;
+    double y;
+
+    // orientation == 0 --> Left
+    // orientation == 1 --> Right
+    int orientation;
+} turn_point_t;
+
+// SINA: This is to hold the information for one Junction feature
+typedef struct
+{
+    double x;
+    double y;
+
+    // type == 3 --> Threeway Junction
+    // tpye == 4 --> Fourway Junction
+    int type;
+} junction_t;
   
 // Description for a single map cell.
 typedef struct
@@ -75,9 +105,17 @@ typedef struct
   // Max distance at which we care about obstacles, for constructing
   // likelihood field
   double max_occ_dist;
+
+  size_t cross_walks_count;
+  cross_walk_t cross_walks[100];
+
+  size_t turn_points_count;
+  turn_point_t turn_points[100];
+
+  size_t junctions_count;
+  junction_t junctions[100];
   
 } map_t;
-
 
 
 /**************************************************************************
@@ -124,6 +162,11 @@ void map_draw_cspace(map_t *map, struct _rtk_fig_t *fig);
 // Draw a wifi map
 void map_draw_wifi(map_t *map, struct _rtk_fig_t *fig, int index);
 
+// SINA: Load feature properties from the file
+void map_feature_load(map_t *map, const char *filename);
+
+// SINA: Return the value for crosswalk feature based on the current pose
+int map_see_crosswalk(map_t *map, pf_vector_t pose[3]);
 
 /**************************************************************************
  * Map manipulation macros

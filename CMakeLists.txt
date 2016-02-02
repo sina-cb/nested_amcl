@@ -83,7 +83,8 @@ add_library(nested_amcl_map
                     src/map/map_cspace.cpp
                     src/map/map_range.c
                     src/map/map_store.c
-                    src/map/map_draw.c)
+                    src/map/map_draw.c
+                    src/map/map_feature.cpp)
 
 add_library(nested_amcl_sensors
                     src/sensors/amcl_sensor.cpp
