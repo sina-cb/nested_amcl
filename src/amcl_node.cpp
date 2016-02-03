@@ -866,6 +866,16 @@ void AmclNode::collect_sample(geometry_msgs::PoseWithCovarianceStamped *our_pose
                               geometry_msgs::PoseWithCovarianceStamped *leader_pose,
                               double landmark_r, double landmark_phi){
 
+    pf_vector_t leader_pose_v;
+    leader_pose_v.v[0] = leader_pose->pose.pose.position.x;
+    leader_pose_v.v[1] = leader_pose->pose.pose.position.y;
+    leader_pose_v.v[2] = tf::getYaw(leader_pose->pose.pose.orientation);
+
+    pf_vector_t our_pose_v;
+    our_pose_v.v[0] = our_pose->pose.pose.position.x;
+    our_pose_v.v[1] = our_pose->pose.pose.position.y;
+    our_pose_v.v[2] = tf::getYaw(our_pose->pose.pose.orientation);
+
     ROS_INFO("Leader Pose: %f\t%f\t%f", leader_pose->pose.pose.position.x,
              leader_pose->pose.pose.position.y,
              leader_pose->pose.pose.orientation.w);
@@ -873,6 +883,12 @@ void AmclNode::collect_sample(geometry_msgs::PoseWithCovarianceStamped *our_pose
     ROS_INFO("Our Pose: %f\t%f\t%f", our_pose->pose.pose.position.x,
              our_pose->pose.pose.position.y,
              our_pose->pose.pose.orientation.w);
+
+    int cross_walk_seen = map_see_crosswalk(this->map_, our_pose_v);
+
+    double* walls_dist = map_side_walls(this->map_, our_pose_v, 3);
+
+    return;
 
     double delta_x = pow(our_pose->pose.pose.position.x - previous_time_pose.pose.pose.position.x, 2.0);
     delta_x += pow(our_pose->pose.pose.position.y - previous_time_pose.pose.pose.position.y, 2.0);

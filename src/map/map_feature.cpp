@@ -30,18 +30,110 @@
 #include <string>
 #include <vector>
 #include <sstream>
-
+#include <cmath>
+#include "ros/assert.h"
 #include "map.h"
 
 using namespace std;
 
 int doesFileExist(const char* filename);
 
+// SINA: Computes the distance from the two neasrest walls around the robot pose
+double* map_side_walls(map_t *map, pf_vector_t pose, double max_range){
+    double heading = pose.v[2];
+    int index = -1;
+
+    if (heading < M_PI && heading >= (M_PI / 2.0)){
+        if (abs(heading - M_PI) < abs(heading - (M_PI / 2.0))){
+            index = 0;
+        }else{
+            index = 1;
+        }
+    }else if (heading < (M_PI / 2.0) && heading >= 0.0){
+        if (abs(heading - (M_PI / 2.0)) < abs(heading - 0.0)){
+            index = 1;
+        }else{
+            index = 2;
+        }
+    }else if (heading < 0.0 && heading >= -(M_PI / 2.0)){
+        if (abs(heading - 0) < abs(heading - (-(M_PI / 2.0)))){
+            index = 2;
+        }else{
+            index = 3;
+        }
+    }else if (heading < -(M_PI / 2.0) && heading >= -M_PI){
+        if (abs(heading - (-(M_PI / 2.0))) < abs (heading - (-M_PI))){
+            index = 3;
+        }else{
+            index = 0;
+        }
+    }
+
+    ROS_ASSERT(index != -1);
+
+    printf("Computed Index: %d\n", index);
+
+    double* results = new double[2];
+    switch (index) {
+    case 0:
+        results[0] = map_calc_range(map, pose.v[0], pose.v[1], (-M_PI / 2.0), max_range);
+        results[1] = map_calc_range(map, pose.v[0], pose.v[1], (M_PI / 2.0), max_range);
+        break;
+    case 1:
+        results[0] = map_calc_range(map, pose.v[0], pose.v[1], (M_PI), max_range);
+        results[1] = map_calc_range(map, pose.v[0], pose.v[1], (0.0), max_range);
+        break;
+    case 2:
+        results[0] = map_calc_range(map, pose.v[0], pose.v[1], (M_PI / 2.0), max_range);
+        results[1] = map_calc_range(map, pose.v[0], pose.v[1], (-M_PI / 2.0), max_range);
+        break;
+    case 3:
+        results[0] = map_calc_range(map, pose.v[0], pose.v[1], (0.0), max_range);
+        results[1] = map_calc_range(map, pose.v[0], pose.v[1], (M_PI), max_range);
+        break;
+    default:
+        printf("This should not happen at all!!!\n");
+        break;
+    }
+
+    printf("Left Wall: %f, Right Wall %f\n", results[0], results[1]);
+
+    return results;
+}
+
 // SINA: Return the value for crosswalk feature based on the current pose
-int map_see_crosswalk(map_t *map, pf_vector_t pose[3]){
+int map_see_crosswalk(map_t *map, pf_vector_t pose){
+    double dist = -1;
+    for (int i = 0; i < map->cross_walks_count; i++){
+        double temp_dist = pow((pose.v[0] - map->cross_walks[i].x), 2) + pow((pose.v[1] - map->cross_walks[i].y), 2);
+        temp_dist = sqrt(temp_dist);
 
+        if (dist == -1 || temp_dist < dist){
+            pf_vector_t test_delta_pose;
+            double delta_dist = 0.2;
 
+            test_delta_pose.v[0] = cos(pose.v[2]) * delta_dist;
+            test_delta_pose.v[1] = sin(pose.v[2]) * delta_dist;
+            test_delta_pose.v[2] = 0.0;
 
+            test_delta_pose = pf_vector_add(pose, test_delta_pose);
+
+            double test_dist = pow((test_delta_pose.v[0] - map->cross_walks[i].x), 2) +
+                    pow((test_delta_pose.v[1] - map->cross_walks[i].y), 2);
+
+            test_dist = sqrt(test_dist);
+
+            if (test_dist < temp_dist){
+                dist = temp_dist;
+            }
+        }
+    }
+
+    if (dist != -1){
+        return 1;
+    }else{
+        return 0;
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////
