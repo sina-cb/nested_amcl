@@ -38,67 +38,69 @@ namespace amcl
 
 typedef enum
 {
-  ODOM_MODEL_DIFF,
-  ODOM_MODEL_OMNI
+    ODOM_MODEL_DIFF,
+    ODOM_MODEL_OMNI
 } odom_model_t;
 
 // Odometric sensor data
 class AMCLOdomData : public AMCLSensorData
 {
-  // Odometric pose
-  public: pf_vector_t pose;
+    // Odometric pose
+public: pf_vector_t pose;
 
-  // Change in odometric pose
-  public: pf_vector_t delta;
+    // Change in odometric pose
+public: pf_vector_t delta;
+
+    // Change in the nested particles' pose
+public: pf_vector_t nested_velocity;
 };
 
 
 // Odometric sensor model
 class AMCLOdom : public AMCLSensor
 {
-  // Default constructor
-  public: AMCLOdom();
+    // Default constructor
+public: AMCLOdom();
 
-  // Constructor with map parameter (Created by KPM for NPF)
-  public: AMCLOdom(map_t *map, MCFHMM *hmm);
+    // Constructor with map parameter (Created by KPM for NPF)
+public: AMCLOdom(map_t *map, MCFHMM *hmm);
 
-  public: void SetModelDiff(double alpha1,
-                            double alpha2,
-                            double alpha3,
-                            double alpha4);
+public: void SetModelDiff(double alpha1,
+                          double alpha2,
+                          double alpha3,
+                          double alpha4);
 
-  public: void SetModelOmni(double alpha1,
-                            double alpha2,
-                            double alpha3,
-                            double alpha4,
-                            double alpha5);
+public: void SetModelOmni(double alpha1,
+                          double alpha2,
+                          double alpha3,
+                          double alpha4,
+                          double alpha5);
 
-  // Update the filter based on the action model.  Returns true if the filter
-  // has been updated.
-  public: virtual bool UpdateAction(pf_t *pf, AMCLSensorData *data);
+    // Update the filter based on the action model.  Returns true if the filter
+    // has been updated.
+public: virtual bool UpdateAction(pf_t *pf, AMCLSensorData *data);
 
-  // Update the nested filter based on the action model.  Returns true if the filter
-  // has been updated.
-  public: virtual bool UpdateNestedAction(pf_t *nested_pf, double upper_delta_trans,
-                                          double delta_x); //, AMCLSensorData *nested_odomData);
+    // Update the nested filter based on the action model.  Returns true if the filter
+    // has been updated.
+public: virtual bool UpdateNestedAction(pf_t *nested_pf, double upper_delta_trans,
+                                        pf_vector_t vel, double time); //, AMCLSensorData *nested_odomData);
 
-  // Generates fake odom delta based on a behaviour model
-  void getNestedParticlePose(pf_vector_t *odom_pose, pf_vector_t *delta, double delta_trans,
-                             double delta_x);
+    // Generates fake odom delta based on a behaviour model
+    void getNestedParticlePose(pf_vector_t *odom_pose, pf_vector_t *delta, pf_vector_t vel, double time);
 
-  // Current data timestamp
-  private: double time;
+    // Current data timestamp
+private: double time;
 
-  // Model type
-  private: odom_model_t model_type;
+    // Model type
+private: odom_model_t model_type;
 
-  // Drift parameters
-  private: double alpha1, alpha2, alpha3, alpha4, alpha5;
+    // Drift parameters
+private: double alpha1, alpha2, alpha3, alpha4, alpha5;
 
-  private: MCFHMM *hmm;
+private: MCFHMM *hmm;
 
-  // Map for generating nested particle poses within the map.
-  map_t *map;
+    // Map for generating nested particle poses within the map.
+    map_t *map;
 };
 
 

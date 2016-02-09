@@ -56,8 +56,8 @@ typedef struct
     double x;
     double y;
 
-    // orientation == 0 --> Left
-    // orientation == 1 --> Right
+    // orientation == 1 --> Left
+    // orientation == 2 --> Right
     int orientation;
 } turn_point_t;
 
@@ -166,7 +166,13 @@ void map_draw_wifi(map_t *map, struct _rtk_fig_t *fig, int index);
 void map_feature_load(map_t *map, const char *filename);
 
 // SINA: Return the value for crosswalk feature based on the current pose
-int map_see_crosswalk(map_t *map, pf_vector_t pose);
+int map_see_crosswalk(map_t *map, pf_vector_t pose, double delta_dist, double max_dist);
+
+// SINA: Return the value for turnpoint feature based on the current pose
+int map_see_turnpoint(map_t *map, pf_vector_t pose, double delta_dist, double max_dist);
+
+// SINA: Return the value for junction feature based on the current pose
+int map_see_junction(map_t *map, pf_vector_t pose, double delta_dist, double max_dist);
 
 // SINA: Computes the distance from the two neasrest walls around the robot pose
 double* map_side_walls(map_t *map, pf_vector_t pose, double max_range);

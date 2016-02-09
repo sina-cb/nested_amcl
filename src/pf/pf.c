@@ -919,14 +919,7 @@ void pf_update_nested_resample(pf_t *pf, double landmark_r, double landmark_phi,
             //KPM ...trying dual sampling instead of random sampling
             sample_b->pose = nested_dual_fn(pf->random_pose_data, landmark_r, landmark_phi, upper_particle_pose);
 
-        }
-
-
-
-
-        else{
-
-
+        }else{
 
             if(drand48() < w_diff){ // Recovery for normal particles
 

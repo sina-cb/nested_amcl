@@ -283,9 +283,9 @@ void map_feature_load(map_t *map, const char *filename){
             junction.y = atof(splitted[2].c_str());
 
             if (splitted[3] == "THREE")
-                junction.type = 3;
+                junction.type = 1;
             else if (splitted[3] == "FOUR")
-                junction.type = 4;
+                junction.type = 2;
 
             map->junctions[map->junctions_count] = junction;
             map->junctions_count++;
