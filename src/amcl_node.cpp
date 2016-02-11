@@ -18,7 +18,9 @@
  *
  */
 
-/* Author: Brian Gerkey */
+/* Author 1: Brian Gerkey
+ * Author 2: Sina Solaimanpour
+ */
 
 #include <algorithm>
 #include <vector>
@@ -146,6 +148,14 @@ public:
 
     int process();
 
+    // SINA: Collect samples for a separate HMM run
+    std::string obs_file_path;
+    std::string m_file_path;
+    std::string v_file_path;
+    std::ofstream obs_out;
+    std::ofstream m_out;
+    std::ofstream v_out;
+
 private:
     /* KPM */
     bool color_angles[641];
@@ -187,8 +197,6 @@ private:
     pf_vector_t         velocity_samples[2];
     pf_vector_t         accel_sample[2];
     bool                propagate_based_on_observation;
-
-    //    double get_landmark_r();
 
 #if COLLECT_DATA
     /* Initializing the file into which we'll collect all our data */
@@ -393,6 +401,10 @@ void sigintHandler(int sig)
     // Save latest pose as we're shutting down.
     ROS_FATAL("Exiting the process completely!");
 
+    amcl_node_ptr.get()->obs_out.close();
+    amcl_node_ptr.get()->m_out.close();
+    amcl_node_ptr.get()->v_out.close();
+
     ros::shutdown();
     exit(0);
 }
@@ -436,6 +448,16 @@ AmclNode::AmclNode() :
 {
     boost::recursive_mutex::scoped_lock l(configuration_mutex_);
 
+    // SINA: Initialize the file paths for HMM data collection
+    obs_file_path = "/home/sina/Desktop/obs.txt";
+    m_file_path = "/home/sina/Desktop/m.txt";
+    v_file_path = "/home/sina/Desktop/v.txt";
+
+    obs_out.open(obs_file_path, ios::out);
+    m_out.open(m_file_path, ios::out);
+    v_out.open(v_file_path, ios::out);
+
+    // SINA: Use this to decide whether we should use the HMM or pure observation to estimate the motion
     propagate_based_on_observation = false;
 
     //KPM: innitializing some variables
@@ -850,9 +872,8 @@ void AmclNode::reconfigureCB(AMCLConfig &config, uint32_t level)
 // TODO: still not decided how and when to actually call this function, but
 //       it is meant to update the HMM strucuture and learn the distributions
 void AmclNode::learn_HMM(){
-    int max_iterations = 1;
-    int N = 30;
-    //    hmm.learn_hmm(&observations, max_iterations, N);
+    int max_iterations = 2;
+    int N = 20;
 
     for (size_t i = 0; i < pi_.size(); i++){
         pi_[i].p = 1.0 / pi_.size();
@@ -867,6 +888,10 @@ void AmclNode::learn_HMM(){
     }
 
     hmm.set_distributions(&pi_, &m_, &v_, 0.5);
+
+    hmm.learn_hmm(&observations, max_iterations, N);
+
+    ROS_WARN("Finished Learning");
 }
 
 void AmclNode::collect_sample(geometry_msgs::PoseWithCovarianceStamped *our_pose,
@@ -951,44 +976,44 @@ void AmclNode::collect_sample(geometry_msgs::PoseWithCovarianceStamped *our_pose
     // Collect Samples Here!!!
     if (nested_MSE == -1 || nested_MSE <= .3){
 
-        ROS_INFO("Times: %f\t%f\t%f", sampling_time[0].toSec(), sampling_time[1].toSec(), sampling_time[2].toSec());
+        //        ROS_INFO("Times: %f\t%f\t%f", sampling_time[0].toSec(), sampling_time[1].toSec(), sampling_time[2].toSec());
 
-        ROS_INFO("Delta_T: %f", delta_t);
+        //        ROS_INFO("Delta_T: %f", delta_t);
 
-        ROS_INFO("Landmark R: %f\tLandmark Phi: %f", landmark_r, landmark_phi);
+        //        ROS_INFO("Landmark R: %f\tLandmark Phi: %f", landmark_r, landmark_phi);
 
-        ROS_INFO("Leader Pose: %f\t%f\t%f",
-                 leader_pose_v.v[0],
-                leader_pose_v.v[1],
-                leader_pose_v.v[2]);
+        //        ROS_INFO("Leader Pose: %f\t%f\t%f",
+        //                 leader_pose_v.v[0],
+        //                leader_pose_v.v[1],
+        //                leader_pose_v.v[2]);
 
-        if (print_)
-            ROS_INFO("Leader Pose From Obs: %f\t%f\t%f",
-                     leader_pose_v_from_obs.v[0],
-                    leader_pose_v_from_obs.v[1],
-                    leader_pose_v_from_obs.v[2]);
+        //        if (print_)
+        //            ROS_INFO("Leader Pose From Obs: %f\t%f\t%f",
+        //                     leader_pose_v_from_obs.v[0],
+        //                    leader_pose_v_from_obs.v[1],
+        //                    leader_pose_v_from_obs.v[2]);
 
-        ROS_INFO("Our Pose: %f\t%f\t%f",
-                 our_pose_v.v[0],
-                our_pose_v.v[1],
-                our_pose_v.v[2]);
+        //        ROS_INFO("Our Pose: %f\t%f\t%f",
+        //                 our_pose_v.v[0],
+        //                our_pose_v.v[1],
+        //                our_pose_v.v[2]);
 
-        ROS_INFO("Current Velocity: %f\t%f\t%f",
-                 velocity_samples[current_pose_index - 1].v[0],
-                velocity_samples[current_pose_index - 1].v[1],
-                velocity_samples[current_pose_index - 1].v[2]);
+        //        ROS_INFO("Current Velocity: %f\t%f\t%f",
+        //                 velocity_samples[current_pose_index - 1].v[0],
+        //                velocity_samples[current_pose_index - 1].v[1],
+        //                velocity_samples[current_pose_index - 1].v[2]);
 
-        ROS_INFO("Current Acceleration: %f\t%f\t%f",
-                 accel_sample[current_pose_index - 2].v[0],
-                accel_sample[current_pose_index - 2].v[1],
-                accel_sample[current_pose_index - 2].v[2]);
+        //        ROS_INFO("Current Acceleration: %f\t%f\t%f",
+        //                 accel_sample[current_pose_index - 2].v[0],
+        //                accel_sample[current_pose_index - 2].v[1],
+        //                accel_sample[current_pose_index - 2].v[2]);
 
-        ROS_INFO("Features:");
-        ROS_INFO("\tCross Walk: %d", cross_walk_seen);
-        ROS_INFO("\tTurn Point: %d", turn_point_seen);
-        ROS_INFO("\tJunction: %d  ", junction_seen);
-        ROS_INFO("\tLeft Wall: %f ", walls_dists[0]);
-        ROS_INFO("\tRight Wall: %f", walls_dists[1]);
+        //        ROS_INFO("Features:");
+        //        ROS_INFO("\tCross Walk: %d", cross_walk_seen);
+        //        ROS_INFO("\tTurn Point: %d", turn_point_seen);
+        //        ROS_INFO("\tJunction: %d  ", junction_seen);
+        //        ROS_INFO("\tLeft Wall: %f ", walls_dists[0]);
+        //        ROS_INFO("\tRight Wall: %f", walls_dists[1]);
 
         Observation obs;
         obs.values.push_back(cross_walk_seen);
@@ -999,6 +1024,20 @@ void AmclNode::collect_sample(geometry_msgs::PoseWithCovarianceStamped *our_pose
 
         observations.push_back(obs);
 
+        obs_out << std::setprecision(3)
+                << obs.values[0] << "\t" << obs.values[1] << "\t"
+                << obs.values[2] << "\t" << obs.values[3] << "\t"
+                << obs.values[4] << std::endl;
+        obs_out.flush();
+
+        ROS_DEBUG("Observation: %f, %f, %f, %f, %f",
+                 obs.values[0],
+                obs.values[1],
+                obs.values[2],
+                obs.values[3],
+                obs.values[4]
+                );
+
         Sample sample_m;
         sample_m.values.push_back(accel_sample[current_pose_index - 2].v[0]);
         sample_m.values.push_back(accel_sample[current_pose_index - 2].v[1]);
@@ -1008,6 +1047,21 @@ void AmclNode::collect_sample(geometry_msgs::PoseWithCovarianceStamped *our_pose
         sample_m.values.push_back(accel_sample[current_pose_index - 1].v[2]);
 
         m_.push_back(sample_m);
+
+        m_out << std::setprecision(3)
+              << sample_m.values[0] << "\t" << sample_m.values[1] << "\t"
+              << sample_m.values[2] << "\t" << sample_m.values[3] << "\t"
+              << sample_m.values[4] << "\t" << sample_m.values[5] << std::endl;
+        m_out.flush();
+
+        ROS_DEBUG("M Sample: %f, %f, %f, %f, %f, %f",
+                 sample_m.values[0],
+                sample_m.values[1],
+                sample_m.values[2],
+                sample_m.values[3],
+                sample_m.values[4],
+                sample_m.values[5]
+                );
 
         Sample sample_v;
         sample_v.values.push_back(cross_walk_seen);
@@ -1020,6 +1074,24 @@ void AmclNode::collect_sample(geometry_msgs::PoseWithCovarianceStamped *our_pose
         sample_v.values.push_back(accel_sample[current_pose_index - 1].v[2]);
 
         v_.push_back(sample_v);
+
+        v_out << std::setprecision(3)
+              << sample_v.values[0] << "\t" << sample_v.values[1] << "\t"
+              << sample_v.values[2] << "\t" << sample_v.values[3] << "\t"
+              << sample_v.values[4] << "\t" << sample_v.values[5] << "\t"
+              << sample_v.values[6] << "\t" << sample_v.values[7] << std::endl;
+        v_out.flush();
+
+        ROS_DEBUG("V Sample: %f, %f, %f, %f, %f, %f, %f, %f",
+                 sample_v.values[0],
+                sample_v.values[1],
+                sample_v.values[2],
+                sample_v.values[3],
+                sample_v.values[4],
+                sample_v.values[5],
+                sample_v.values[6],
+                sample_v.values[7]
+                );
 
         collected_sample++;
         ROS_WARN("Collected samples: %d", collected_sample);
@@ -1046,52 +1118,68 @@ void AmclNode::init_HMM(){
     vector<double> * v_high_limits = new vector<double>();
 
     // TODO: Add bounds to the vectors here!
+    double accel_min = -0.5;
+    double accel_w_min = -M_PI / 4;
 
+    double accel_max = 0.5;
+    double accel_w_max = M_PI / 4;
+
+    double crosswalk_min = 0;
+    double crosswalk_max = 1;
+
+    double turn_point_min = 0;
+    double turn_point_max = 2;
+
+    double junction_min = 0;
+    double junction_max = 2;
+
+    double wall_min = 0;
+    double wall_max = 3.0;
 
     ////////// INIT PI BOUNDS //////////
-    pi_low_limits->push_back(-2);
-    pi_low_limits->push_back(-2);
-    pi_low_limits->push_back(-M_PI);
+    pi_low_limits->push_back(accel_min);
+    pi_low_limits->push_back(accel_min);
+    pi_low_limits->push_back(accel_w_min);
 
-    pi_high_limits->push_back(2);
-    pi_high_limits->push_back(2);
-    pi_high_limits->push_back(M_PI);
+    pi_high_limits->push_back(accel_max);
+    pi_high_limits->push_back(accel_max);
+    pi_high_limits->push_back(accel_w_max);
 
 
     ////////// INIT M  BOUNDS //////////
-    m_low_limits->push_back(-2);
-    m_low_limits->push_back(-2);
-    m_low_limits->push_back(-M_PI);
-    m_low_limits->push_back(-2);
-    m_low_limits->push_back(-2);
-    m_low_limits->push_back(-M_PI);
+    m_low_limits->push_back(accel_min);
+    m_low_limits->push_back(accel_min);
+    m_low_limits->push_back(accel_w_min);
+    m_low_limits->push_back(accel_min);
+    m_low_limits->push_back(accel_min);
+    m_low_limits->push_back(accel_w_min);
 
-    m_high_limits->push_back(2);
-    m_high_limits->push_back(2);
-    m_high_limits->push_back(M_PI);
-    m_high_limits->push_back(2);
-    m_high_limits->push_back(2);
-    m_high_limits->push_back(M_PI);
+    m_high_limits->push_back(accel_max);
+    m_high_limits->push_back(accel_max);
+    m_high_limits->push_back(accel_w_max);
+    m_high_limits->push_back(accel_max);
+    m_high_limits->push_back(accel_max);
+    m_high_limits->push_back(accel_w_max);
 
 
     ////////// INIT V  BOUNDS //////////
-    v_low_limits->push_back(0);
-    v_low_limits->push_back(0);
-    v_low_limits->push_back(0);
-    v_low_limits->push_back(0);
-    v_low_limits->push_back(0);
-    v_low_limits->push_back(-2);
-    v_low_limits->push_back(-2);
-    v_low_limits->push_back(-M_PI);
+    v_low_limits->push_back(crosswalk_min);
+    v_low_limits->push_back(turn_point_min);
+    v_low_limits->push_back(junction_min);
+    v_low_limits->push_back(wall_min);
+    v_low_limits->push_back(wall_min);
+    v_low_limits->push_back(accel_min);
+    v_low_limits->push_back(accel_min);
+    v_low_limits->push_back(accel_w_min);
 
-    v_high_limits->push_back(1);
-    v_high_limits->push_back(2);
-    v_high_limits->push_back(2);
-    v_high_limits->push_back(3);
-    v_high_limits->push_back(3);
-    v_high_limits->push_back(2);
-    v_high_limits->push_back(2);
-    v_high_limits->push_back(M_PI);
+    v_high_limits->push_back(crosswalk_max);
+    v_high_limits->push_back(turn_point_max);
+    v_high_limits->push_back(junction_max);
+    v_high_limits->push_back(wall_max);
+    v_high_limits->push_back(wall_max);
+    v_high_limits->push_back(accel_max);
+    v_high_limits->push_back(accel_max);
+    v_high_limits->push_back(accel_w_max);
 
     for (size_t i = 0; i < 20; i++){
         Sample pi_temp;
@@ -1535,6 +1623,8 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
         // TODO: Not sure if it should reside here or not! :)
         // SINA: Calling this to learn the HMM
         learn_HMM();
+
+        // TODO: It should start collecting samples for a while and then learn so it should be false
         learn_criteria = false;
     }
 
@@ -1700,20 +1790,23 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
             odata.time = 0.5;
         }
 
-        if (odata.nested_velocity.v[0] > 0.3){
-            odata.nested_velocity.v[0] = 0.3;
-        }else if (odata.nested_velocity.v[0] < -0.3){
-            odata.nested_velocity.v[0] = -0.3;
+        double max_speed_thresh = 0.35;
+        double max_speed_w_thresh = 0.1;
+
+        if (odata.nested_velocity.v[0] > max_speed_thresh){
+            odata.nested_velocity.v[0] = max_speed_thresh;
+        }else if (odata.nested_velocity.v[0] < -max_speed_thresh){
+            odata.nested_velocity.v[0] = -max_speed_thresh;
         }
-        if (odata.nested_velocity.v[1] > 0.3){
-            odata.nested_velocity.v[1] = 0.3;
-        }else if (odata.nested_velocity.v[1] < -0.3){
-            odata.nested_velocity.v[1] = -0.3;
+        if (odata.nested_velocity.v[1] > max_speed_thresh){
+            odata.nested_velocity.v[1] = max_speed_thresh;
+        }else if (odata.nested_velocity.v[1] < -max_speed_thresh){
+            odata.nested_velocity.v[1] = -max_speed_thresh;
         }
-        if (odata.nested_velocity.v[2] > 0.1){
-            odata.nested_velocity.v[2] = 0.1;
-        }else if (odata.nested_velocity.v[2] < -0.3){
-            odata.nested_velocity.v[2] = -0.3;
+        if (odata.nested_velocity.v[2] > max_speed_w_thresh){
+            odata.nested_velocity.v[2] = max_speed_w_thresh;
+        }else if (odata.nested_velocity.v[2] < -max_speed_w_thresh){
+            odata.nested_velocity.v[2] = -max_speed_w_thresh;
         }
 
         ROS_WARN("Estimated Velocity: %f, %f, %f",
