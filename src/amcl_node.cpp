@@ -457,6 +457,26 @@ AmclNode::AmclNode() :
     m_out.open(m_file_path, ios::out);
     v_out.open(v_file_path, ios::out);
 
+    // Write the headers to the collected data file
+    {
+        obs_out << "CrossWALK" << "\t" << "TurnPOINT" << "\t"
+                << "Junction" << "\t" << "WallLeft" << "\t"
+                << "WallRight" << std::endl;
+
+        m_out << "OldAccl_X " << "\t" << "OldAccl_Y" << "\t"
+              << "OldAccl_W" << "\t" << "NewAccl_X" << "\t"
+              << "NewAccl_Y" << "\t" << "NewAccl_W" << std::endl;
+
+        v_out << "CrossWALK" << "\t" << "TurnPOINT" << "\t"
+              << "Junction" << "\t" << "WallLeft" << "\t"
+              << "WallRight" << "\t" << "NewAccl_X" << "\t"
+              << "NewAccl_Y" << "\t" << "NewAccl_W" << std::endl;
+
+        obs_out.flush();
+        m_out.flush();
+        v_out.flush();
+    }
+
     // SINA: Use this to decide whether we should use the HMM or pure observation to estimate the motion
     propagate_based_on_observation = false;
 
@@ -1031,7 +1051,7 @@ void AmclNode::collect_sample(geometry_msgs::PoseWithCovarianceStamped *our_pose
         obs_out.flush();
 
         ROS_DEBUG("Observation: %f, %f, %f, %f, %f",
-                 obs.values[0],
+                  obs.values[0],
                 obs.values[1],
                 obs.values[2],
                 obs.values[3],
@@ -1055,7 +1075,7 @@ void AmclNode::collect_sample(geometry_msgs::PoseWithCovarianceStamped *our_pose
         m_out.flush();
 
         ROS_DEBUG("M Sample: %f, %f, %f, %f, %f, %f",
-                 sample_m.values[0],
+                  sample_m.values[0],
                 sample_m.values[1],
                 sample_m.values[2],
                 sample_m.values[3],
@@ -1083,7 +1103,7 @@ void AmclNode::collect_sample(geometry_msgs::PoseWithCovarianceStamped *our_pose
         v_out.flush();
 
         ROS_DEBUG("V Sample: %f, %f, %f, %f, %f, %f, %f, %f",
-                 sample_v.values[0],
+                  sample_v.values[0],
                 sample_v.values[1],
                 sample_v.values[2],
                 sample_v.values[3],
