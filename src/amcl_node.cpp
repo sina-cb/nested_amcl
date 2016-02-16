@@ -463,14 +463,13 @@ AmclNode::AmclNode() :
                 << "Junction" << "\t" << "WallLeft" << "\t"
                 << "WallRight" << std::endl;
 
-        m_out << "OldAccl_X " << "\t" << "OldAccl_Y" << "\t"
-              << "OldAccl_W" << "\t" << "NewAccl_X" << "\t"
-              << "NewAccl_Y" << "\t" << "NewAccl_W" << std::endl;
+        m_out << "OldVel_X" << "\t" << "OldVel_Y" << "\t"
+              << "NewVel_X" << "\t" << "NewVel_Y" << std::endl;
 
         v_out << "CrossWALK" << "\t" << "TurnPOINT" << "\t"
               << "Junction" << "\t" << "WallLeft" << "\t"
-              << "WallRight" << "\t" << "NewAccl_X" << "\t"
-              << "NewAccl_Y" << "\t" << "NewAccl_W" << std::endl;
+              << "WallRight" << "\t" << "NewVel_X" << "\t"
+              << "NewVel_Y" << std::endl;
 
         obs_out.flush();
         m_out.flush();
@@ -920,55 +919,69 @@ void AmclNode::collect_sample(geometry_msgs::PoseWithCovarianceStamped *our_pose
                               double nested_MSE){
     size_t current_pose_index = 2;
 
+    // Get the leader pose from the nested particles
     pf_vector_t leader_pose_v;
     leader_pose_v.v[0] = leader_pose->pose.pose.position.x;
     leader_pose_v.v[1] = leader_pose->pose.pose.position.y;
     leader_pose_v.v[2] = tf::getYaw(leader_pose->pose.pose.orientation);
 
+    // Get our own pose from the particles
     pf_vector_t our_pose_v;
     our_pose_v.v[0] = our_pose->pose.pose.position.x;
     our_pose_v.v[1] = our_pose->pose.pose.position.y;
     our_pose_v.v[2] = tf::getYaw(our_pose->pose.pose.orientation);
 
+    // Compute the leader pose based on observation and our own pose (This is more reliable than nested particles)
     pf_vector_t leader_pose_v_from_obs;
     bool print_ = false;
     if (landmark_r_sample != -1 && landmark_phi_sample != -1){
 
         pf_vector_t add_vec;
 
+        // Compute the vector that needs to be added to our own pose to get the leader's pose
         add_vec.v[0] = cos(our_pose_v.v[2] + landmark_phi) * landmark_r;
         add_vec.v[1] = sin(our_pose_v.v[2] + landmark_phi) * landmark_r;
         add_vec.v[2] = 0.0;
 
+        // Here we have the leader pose from the addition process
         leader_pose_v_from_obs = pf_vector_add(our_pose_v, add_vec);
+        // Set leader's pose to the one estimated using nested particles
         leader_pose_v_from_obs.v[2] = leader_pose_v.v[2];
 
+        // Reset the landmark values
         landmark_r_sample = -1;
         landmark_phi_sample = -1;
-        print_ = true;
 
+        // We can use the mean of the two computed poses! But I preferred the obs pose
         //        leader_pose_v.v[0] = (leader_pose_v.v[0] + leader_pose_v_from_obs.v[0]) / 2.0;
         //        leader_pose_v.v[1] = (leader_pose_v.v[1] + leader_pose_v_from_obs.v[1]) / 2.0;
+
+        // We use this computed pose if we have observation
         leader_pose_v.v[0] = (leader_pose_v_from_obs.v[0]);
         leader_pose_v.v[1] = (leader_pose_v_from_obs.v[1]);
     }
 
+    // Shift all of the values in our history to left
     for (size_t i = 0; i < current_pose_index; i++){
         our_previous_pose[i] = our_previous_pose[i + 1];
         nested_previous_pose[i] = nested_previous_pose[i + 1];
         sampling_time[i] = sampling_time[i + 1];
     }
 
+    // Set the current values to use in the rest of the calculations
     our_previous_pose[current_pose_index] = our_pose_v;
     nested_previous_pose[current_pose_index] = leader_pose_v;
     sampling_time[current_pose_index] = ros::Time::now();
 
+    // Shift the velocities to open a space for the new velocity (We only have two velocities)
     for (size_t i = 0; i < current_pose_index - 1; i++){
         velocity_samples[i] = velocity_samples[i + 1];
     }
 
+    // Compute the different in time since last sampling
     double delta_t = sampling_time[current_pose_index].toSec() - sampling_time[current_pose_index - 1].toSec();
 
+    // Computer the new velocity based on the previous poses and the delta_t
     velocity_samples[current_pose_index - 1].v[0] = (nested_previous_pose[current_pose_index].v[0] -
             nested_previous_pose[current_pose_index - 1].v[0]) / delta_t;
     velocity_samples[current_pose_index - 1].v[1] = (nested_previous_pose[current_pose_index].v[1] -
@@ -976,10 +989,12 @@ void AmclNode::collect_sample(geometry_msgs::PoseWithCovarianceStamped *our_pose
     velocity_samples[current_pose_index - 1].v[2] = (nested_previous_pose[current_pose_index].v[2] -
             nested_previous_pose[current_pose_index - 1].v[2]) / delta_t;
 
+    // Shift the acceleration values to the left
     for (size_t i = 0; i < current_pose_index - 1; i++){
         accel_sample[i] = accel_sample[i + 1];
     }
 
+    // Compute the new acceleration based on the new velocities
     accel_sample[current_pose_index - 1].v[0] = (velocity_samples[current_pose_index - 1].v[0] -
             velocity_samples[current_pose_index - 2].v[0]) / delta_t;
     accel_sample[current_pose_index - 1].v[1] = (velocity_samples[current_pose_index - 1].v[1] -
@@ -987,11 +1002,15 @@ void AmclNode::collect_sample(geometry_msgs::PoseWithCovarianceStamped *our_pose
     accel_sample[current_pose_index - 1].v[2] = (velocity_samples[current_pose_index - 1].v[2] -
             velocity_samples[current_pose_index - 2].v[2]) / delta_t;
 
-    int cross_walk_seen = map_see_crosswalk(this->map_, our_pose_v, 0.2, 5);
-    int turn_point_seen = map_see_turnpoint(this->map_, our_pose_v, 0.2, 5);
-    int junction_seen   = map_see_junction(this->map_, our_pose_v, 0.2, 5);
+    // Find the features based on the new leader pose
+    int cross_walk_seen = map_see_crosswalk(this->map_, leader_pose_v, 0.2, 5);
+    int turn_point_seen = map_see_turnpoint(this->map_, leader_pose_v, 0.2, 5);
+    int junction_seen   = map_see_junction (this->map_, leader_pose_v, 0.2, 5);
+    double* walls_dists = map_side_walls(this->map_, leader_pose_v, 3);
 
-    double* walls_dists = map_side_walls(this->map_, our_pose_v, 3);
+    if (!walls_dists){
+        return;
+    }
 
     // Collect Samples Here!!!
     if (nested_MSE == -1 || nested_MSE <= .3){
@@ -1059,28 +1078,24 @@ void AmclNode::collect_sample(geometry_msgs::PoseWithCovarianceStamped *our_pose
                 );
 
         Sample sample_m;
-        sample_m.values.push_back(accel_sample[current_pose_index - 2].v[0]);
-        sample_m.values.push_back(accel_sample[current_pose_index - 2].v[1]);
-        sample_m.values.push_back(accel_sample[current_pose_index - 2].v[2]);
-        sample_m.values.push_back(accel_sample[current_pose_index - 1].v[0]);
-        sample_m.values.push_back(accel_sample[current_pose_index - 1].v[1]);
-        sample_m.values.push_back(accel_sample[current_pose_index - 1].v[2]);
+        sample_m.values.push_back(velocity_samples[current_pose_index - 2].v[0]);
+        sample_m.values.push_back(velocity_samples[current_pose_index - 2].v[1]);
+        sample_m.values.push_back(velocity_samples[current_pose_index - 1].v[0]);
+        sample_m.values.push_back(velocity_samples[current_pose_index - 1].v[1]);
 
         m_.push_back(sample_m);
 
         m_out << std::setprecision(3)
               << sample_m.values[0] << "\t" << sample_m.values[1] << "\t"
               << sample_m.values[2] << "\t" << sample_m.values[3] << "\t"
-              << sample_m.values[4] << "\t" << sample_m.values[5] << std::endl;
+              << std::endl;
         m_out.flush();
 
-        ROS_DEBUG("M Sample: %f, %f, %f, %f, %f, %f",
+        ROS_DEBUG("M Sample: %f, %f, %f, %f",
                   sample_m.values[0],
                 sample_m.values[1],
                 sample_m.values[2],
-                sample_m.values[3],
-                sample_m.values[4],
-                sample_m.values[5]
+                sample_m.values[3]
                 );
 
         Sample sample_v;
@@ -1089,9 +1104,8 @@ void AmclNode::collect_sample(geometry_msgs::PoseWithCovarianceStamped *our_pose
         sample_v.values.push_back(junction_seen);
         sample_v.values.push_back(walls_dists[0]);
         sample_v.values.push_back(walls_dists[1]);
-        sample_v.values.push_back(accel_sample[current_pose_index - 1].v[0]);
-        sample_v.values.push_back(accel_sample[current_pose_index - 1].v[1]);
-        sample_v.values.push_back(accel_sample[current_pose_index - 1].v[2]);
+        sample_v.values.push_back(velocity_samples[current_pose_index - 1].v[0]);
+        sample_v.values.push_back(velocity_samples[current_pose_index - 1].v[1]);
 
         v_.push_back(sample_v);
 
@@ -1099,18 +1113,17 @@ void AmclNode::collect_sample(geometry_msgs::PoseWithCovarianceStamped *our_pose
               << sample_v.values[0] << "\t" << sample_v.values[1] << "\t"
               << sample_v.values[2] << "\t" << sample_v.values[3] << "\t"
               << sample_v.values[4] << "\t" << sample_v.values[5] << "\t"
-              << sample_v.values[6] << "\t" << sample_v.values[7] << std::endl;
+              << sample_v.values[6] << "\t" << std::endl;
         v_out.flush();
 
-        ROS_DEBUG("V Sample: %f, %f, %f, %f, %f, %f, %f, %f",
+        ROS_DEBUG("V Sample: %f, %f, %f, %f, %f, %f, %f",
                   sample_v.values[0],
                 sample_v.values[1],
                 sample_v.values[2],
                 sample_v.values[3],
                 sample_v.values[4],
                 sample_v.values[5],
-                sample_v.values[6],
-                sample_v.values[7]
+                sample_v.values[6]
                 );
 
         collected_sample++;
@@ -1138,11 +1151,9 @@ void AmclNode::init_HMM(){
     vector<double> * v_high_limits = new vector<double>();
 
     // TODO: Add bounds to the vectors here!
-    double accel_min = -0.5;
-    double accel_w_min = -M_PI / 4;
+    double vel_min = -0.4;
 
-    double accel_max = 0.5;
-    double accel_w_max = M_PI / 4;
+    double vel_max = 0.4;
 
     double crosswalk_min = 0;
     double crosswalk_max = 1;
@@ -1157,30 +1168,22 @@ void AmclNode::init_HMM(){
     double wall_max = 3.0;
 
     ////////// INIT PI BOUNDS //////////
-    pi_low_limits->push_back(accel_min);
-    pi_low_limits->push_back(accel_min);
-    pi_low_limits->push_back(accel_w_min);
+    pi_low_limits->push_back(vel_min);
+    pi_low_limits->push_back(vel_min);
 
-    pi_high_limits->push_back(accel_max);
-    pi_high_limits->push_back(accel_max);
-    pi_high_limits->push_back(accel_w_max);
-
+    pi_high_limits->push_back(vel_max);
+    pi_high_limits->push_back(vel_max);
 
     ////////// INIT M  BOUNDS //////////
-    m_low_limits->push_back(accel_min);
-    m_low_limits->push_back(accel_min);
-    m_low_limits->push_back(accel_w_min);
-    m_low_limits->push_back(accel_min);
-    m_low_limits->push_back(accel_min);
-    m_low_limits->push_back(accel_w_min);
+    m_low_limits->push_back(vel_min);
+    m_low_limits->push_back(vel_min);
+    m_low_limits->push_back(vel_min);
+    m_low_limits->push_back(vel_min);
 
-    m_high_limits->push_back(accel_max);
-    m_high_limits->push_back(accel_max);
-    m_high_limits->push_back(accel_w_max);
-    m_high_limits->push_back(accel_max);
-    m_high_limits->push_back(accel_max);
-    m_high_limits->push_back(accel_w_max);
-
+    m_high_limits->push_back(vel_max);
+    m_high_limits->push_back(vel_max);
+    m_high_limits->push_back(vel_max);
+    m_high_limits->push_back(vel_max);
 
     ////////// INIT V  BOUNDS //////////
     v_low_limits->push_back(crosswalk_min);
@@ -1188,22 +1191,19 @@ void AmclNode::init_HMM(){
     v_low_limits->push_back(junction_min);
     v_low_limits->push_back(wall_min);
     v_low_limits->push_back(wall_min);
-    v_low_limits->push_back(accel_min);
-    v_low_limits->push_back(accel_min);
-    v_low_limits->push_back(accel_w_min);
+    v_low_limits->push_back(vel_min);
+    v_low_limits->push_back(vel_min);
 
     v_high_limits->push_back(crosswalk_max);
     v_high_limits->push_back(turn_point_max);
     v_high_limits->push_back(junction_max);
     v_high_limits->push_back(wall_max);
     v_high_limits->push_back(wall_max);
-    v_high_limits->push_back(accel_max);
-    v_high_limits->push_back(accel_max);
-    v_high_limits->push_back(accel_w_max);
+    v_high_limits->push_back(vel_max);
+    v_high_limits->push_back(vel_max);
 
     for (size_t i = 0; i < 20; i++){
         Sample pi_temp;
-        pi_temp.values.push_back(0.0);
         pi_temp.values.push_back(0.0);
         pi_temp.values.push_back(0.0);
 
@@ -1778,7 +1778,6 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
         if (propagate_based_on_observation){
             odata.nested_velocity.v[0] = velocity_samples[1].v[0];
             odata.nested_velocity.v[1] = velocity_samples[1].v[1];
-            odata.nested_velocity.v[2] = velocity_samples[1].v[2];
 
             propagate_based_on_observation = false;
         }else{
@@ -1795,14 +1794,12 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
                         sample_accl.values[2]
                         );
 
-                odata.nested_velocity.v[0] = velocity_samples[1].v[0] + sample_accl.values[0] * odata.time;
-                odata.nested_velocity.v[1] = velocity_samples[1].v[1] + sample_accl.values[1] * odata.time;
-                odata.nested_velocity.v[2] = velocity_samples[1].v[2] + sample_accl.values[2] * odata.time;
+                odata.nested_velocity.v[0] = sample_accl.values[0];
+                odata.nested_velocity.v[1] = sample_accl.values[1];
 
             }else{
                 odata.nested_velocity.v[0] = .0;
                 odata.nested_velocity.v[1] = .0;
-                odata.nested_velocity.v[2] = .0;
             }
         }
 
@@ -1810,8 +1807,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
             odata.time = 0.5;
         }
 
-        double max_speed_thresh = 0.35;
-        double max_speed_w_thresh = 0.1;
+        double max_speed_thresh = 0.4;
 
         if (odata.nested_velocity.v[0] > max_speed_thresh){
             odata.nested_velocity.v[0] = max_speed_thresh;
@@ -1823,16 +1819,10 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
         }else if (odata.nested_velocity.v[1] < -max_speed_thresh){
             odata.nested_velocity.v[1] = -max_speed_thresh;
         }
-        if (odata.nested_velocity.v[2] > max_speed_w_thresh){
-            odata.nested_velocity.v[2] = max_speed_w_thresh;
-        }else if (odata.nested_velocity.v[2] < -max_speed_w_thresh){
-            odata.nested_velocity.v[2] = -max_speed_w_thresh;
-        }
 
-        ROS_WARN("Estimated Velocity: %f, %f, %f",
+        ROS_WARN("Estimated Velocity: %f, %f",
                  odata.nested_velocity.v[0],
-                odata.nested_velocity.v[1],
-                odata.nested_velocity.v[2]
+                odata.nested_velocity.v[1]
                 );
         ROS_WARN("Delta Time: %f", odata.time);
 

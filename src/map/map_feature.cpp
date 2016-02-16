@@ -41,6 +41,12 @@ int doesFileExist(const char* filename);
 // SINA: Computes the distance from the two neasrest walls around the robot pose
 double* map_side_walls(map_t *map, pf_vector_t pose, double max_range){
     double heading = pose.v[2];
+
+    if (std::isnan(heading)){
+        ROS_DEBUG("Heading is NaN!");
+        return NULL;
+    }
+
     int index = -1;
 
     if (heading < M_PI && heading >= (M_PI / 2.0)){
@@ -283,9 +289,9 @@ void map_feature_load(map_t *map, const char *filename){
             junction.y = atof(splitted[2].c_str());
 
             if (splitted[3] == "THREE")
-                junction.type = 3;
+                junction.type = 1;
             else if (splitted[3] == "FOUR")
-                junction.type = 4;
+                junction.type = 2;
 
             map->junctions[map->junctions_count] = junction;
             map->junctions_count++;
