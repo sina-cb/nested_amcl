@@ -1206,7 +1206,6 @@ void pf_update_nested_adaptive_resample(pf_t *pf, double landmark_r, double land
             //KPM ...trying dual sampling instead of random sampling
             sample_b->pose = nested_dual_fn(pf->random_pose_data, landmark_r, landmark_phi, upper_particle_pose);
         } else {
-
             if(drand48() < w_diff){ // Recovery for normal particles
                 sample_b->pose = (pf->random_pose_fn)(pf->random_pose_data);
             } else {
@@ -1496,7 +1495,6 @@ int pf_get_cluster_stats(pf_t *pf, int clabel, double *weight,
 
 // resampling from the Dual for nested particles
 pf_vector_t nested_dual_fn(void* arg, double landmark_r, double landmark_phi, pf_vector_t upper_particle_pose){
-
     int x1, y1;
     double gamma = 0.0;
     pf_vector_t hit, return_pose;

@@ -933,7 +933,6 @@ void AmclNode::collect_sample(geometry_msgs::PoseWithCovarianceStamped *our_pose
 
     // Compute the leader pose based on observation and our own pose (This is more reliable than nested particles)
     pf_vector_t leader_pose_v_from_obs;
-    bool print_ = false;
     if (landmark_r_sample != -1 && landmark_phi_sample != -1){
 
         pf_vector_t add_vec;
@@ -1080,22 +1079,26 @@ void AmclNode::collect_sample(geometry_msgs::PoseWithCovarianceStamped *our_pose
         Sample sample_m;
         sample_m.values.push_back(velocity_samples[current_pose_index - 2].v[0]);
         sample_m.values.push_back(velocity_samples[current_pose_index - 2].v[1]);
+        sample_m.values.push_back(velocity_samples[current_pose_index - 2].v[2]);
         sample_m.values.push_back(velocity_samples[current_pose_index - 1].v[0]);
         sample_m.values.push_back(velocity_samples[current_pose_index - 1].v[1]);
+        sample_m.values.push_back(velocity_samples[current_pose_index - 1].v[2]);
 
         m_.push_back(sample_m);
 
         m_out << std::setprecision(3)
               << sample_m.values[0] << "\t" << sample_m.values[1] << "\t"
               << sample_m.values[2] << "\t" << sample_m.values[3] << "\t"
-              << std::endl;
+              << sample_m.values[4] << "\t" << sample_m.values[5] << std::endl;
         m_out.flush();
 
-        ROS_DEBUG("M Sample: %f, %f, %f, %f",
+        ROS_DEBUG("M Sample: %f, %f, %f, %f, %f, %f",
                   sample_m.values[0],
                 sample_m.values[1],
                 sample_m.values[2],
-                sample_m.values[3]
+                sample_m.values[3],
+                sample_m.values[4],
+                sample_m.values[5]
                 );
 
         Sample sample_v;
@@ -1106,6 +1109,7 @@ void AmclNode::collect_sample(geometry_msgs::PoseWithCovarianceStamped *our_pose
         sample_v.values.push_back(walls_dists[1]);
         sample_v.values.push_back(velocity_samples[current_pose_index - 1].v[0]);
         sample_v.values.push_back(velocity_samples[current_pose_index - 1].v[1]);
+        sample_v.values.push_back(velocity_samples[current_pose_index - 1].v[2]);
 
         v_.push_back(sample_v);
 
@@ -1113,17 +1117,18 @@ void AmclNode::collect_sample(geometry_msgs::PoseWithCovarianceStamped *our_pose
               << sample_v.values[0] << "\t" << sample_v.values[1] << "\t"
               << sample_v.values[2] << "\t" << sample_v.values[3] << "\t"
               << sample_v.values[4] << "\t" << sample_v.values[5] << "\t"
-              << sample_v.values[6] << "\t" << std::endl;
+              << sample_v.values[6] << "\t" << sample_v.values[7] << std::endl;
         v_out.flush();
 
-        ROS_DEBUG("V Sample: %f, %f, %f, %f, %f, %f, %f",
+        ROS_DEBUG("V Sample: %f, %f, %f, %f, %f, %f, %f, %f",
                   sample_v.values[0],
                 sample_v.values[1],
                 sample_v.values[2],
                 sample_v.values[3],
                 sample_v.values[4],
                 sample_v.values[5],
-                sample_v.values[6]
+                sample_v.values[6],
+                sample_v.values[7]
                 );
 
         collected_sample++;
@@ -1152,8 +1157,10 @@ void AmclNode::init_HMM(){
 
     // TODO: Add bounds to the vectors here!
     double vel_min = -0.4;
+    double vel_min_w = -0.3;
 
     double vel_max = 0.4;
+    double vel_max_w = 0.3;
 
     double crosswalk_min = 0;
     double crosswalk_max = 1;
@@ -1170,20 +1177,26 @@ void AmclNode::init_HMM(){
     ////////// INIT PI BOUNDS //////////
     pi_low_limits->push_back(vel_min);
     pi_low_limits->push_back(vel_min);
+    pi_low_limits->push_back(vel_min_w);
 
     pi_high_limits->push_back(vel_max);
     pi_high_limits->push_back(vel_max);
+    pi_high_limits->push_back(vel_max_w);
 
     ////////// INIT M  BOUNDS //////////
     m_low_limits->push_back(vel_min);
     m_low_limits->push_back(vel_min);
+    m_low_limits->push_back(vel_min_w);
     m_low_limits->push_back(vel_min);
     m_low_limits->push_back(vel_min);
+    m_low_limits->push_back(vel_min_w);
 
     m_high_limits->push_back(vel_max);
     m_high_limits->push_back(vel_max);
+    m_high_limits->push_back(vel_max_w);
     m_high_limits->push_back(vel_max);
     m_high_limits->push_back(vel_max);
+    m_high_limits->push_back(vel_max_w);
 
     ////////// INIT V  BOUNDS //////////
     v_low_limits->push_back(crosswalk_min);
@@ -1193,6 +1206,7 @@ void AmclNode::init_HMM(){
     v_low_limits->push_back(wall_min);
     v_low_limits->push_back(vel_min);
     v_low_limits->push_back(vel_min);
+    v_low_limits->push_back(vel_min_w);
 
     v_high_limits->push_back(crosswalk_max);
     v_high_limits->push_back(turn_point_max);
@@ -1201,9 +1215,11 @@ void AmclNode::init_HMM(){
     v_high_limits->push_back(wall_max);
     v_high_limits->push_back(vel_max);
     v_high_limits->push_back(vel_max);
+    v_high_limits->push_back(vel_max_w);
 
     for (size_t i = 0; i < 20; i++){
         Sample pi_temp;
+        pi_temp.values.push_back(0.0);
         pi_temp.values.push_back(0.0);
         pi_temp.values.push_back(0.0);
 
@@ -1778,36 +1794,64 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
         if (propagate_based_on_observation){
             odata.nested_velocity.v[0] = velocity_samples[1].v[0];
             odata.nested_velocity.v[1] = velocity_samples[1].v[1];
+            odata.nested_velocity.v[2] = velocity_samples[1].v[2];
 
             propagate_based_on_observation = false;
         }else{
 
             if (hmm.initialized_()){
-                Sample sample_accl;
-                DETree result_alpha = hmm.forward(&observations, 100);
-                Sampler sampler;
-                sample_accl = sampler.sample(&result_alpha);
+                vector<Observation> * obs = new vector<Observation>;
+                obs->push_back(observations[observations.size() - 3]);
+                obs->push_back(observations[observations.size() - 2]);
+                obs->push_back(observations[observations.size() - 1]);
 
-                ROS_WARN("Acceleration Sample: %f, %f, %f",
+                int number_of_sampling = 5;
+                int number_of_forward_samples = 100;
+
+                DETree result_alpha = hmm.forward(obs, number_of_forward_samples);
+                Sampler sampler;
+
+                Sample sample_accl;
+                sample_accl = sampler.sample(&result_alpha);
+                for (size_t i = 0; i < number_of_sampling - 1; i++){
+                    Sample temp = sampler.sample(&result_alpha);
+
+                    sample_accl.values[0] = sample_accl.values[0] + temp.values[0];
+                    sample_accl.values[1] = sample_accl.values[1] + temp.values[1];
+                    sample_accl.values[2] = sample_accl.values[2] + temp.values[2];
+                }
+
+                sample_accl.values[0] /= (double)number_of_sampling;
+                sample_accl.values[1] /= (double)number_of_sampling;
+                sample_accl.values[2] /= (double)number_of_sampling;
+
+                ROS_WARN("Velocity Sample: %f, %f, %f",
                          sample_accl.values[0],
                         sample_accl.values[1],
                         sample_accl.values[2]
                         );
 
+//                sample_accl.values[0] = (sample_accl.values[0] + velocity_samples[2].v[0]) / 2;
+//                sample_accl.values[1] = (sample_accl.values[1] + velocity_samples[2].v[1]) / 2;
+//                sample_accl.values[2] = (sample_accl.values[2] + velocity_samples[2].v[2]) / 2;
+
                 odata.nested_velocity.v[0] = sample_accl.values[0];
                 odata.nested_velocity.v[1] = sample_accl.values[1];
+                odata.nested_velocity.v[1] = sample_accl.values[2];
 
             }else{
                 odata.nested_velocity.v[0] = .0;
                 odata.nested_velocity.v[1] = .0;
+                odata.nested_velocity.v[2] = .0;
             }
         }
 
-        if (odata.time > 0.5){
-            odata.time = 0.5;
-        }
+//        if (odata.time > 0.5){
+//            odata.time = 0.5;
+//        }
 
         double max_speed_thresh = 0.4;
+        double max_speed_w_thresh = 0.1;
 
         if (odata.nested_velocity.v[0] > max_speed_thresh){
             odata.nested_velocity.v[0] = max_speed_thresh;
@@ -1819,10 +1863,20 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
         }else if (odata.nested_velocity.v[1] < -max_speed_thresh){
             odata.nested_velocity.v[1] = -max_speed_thresh;
         }
+        if (odata.nested_velocity.v[2] > max_speed_w_thresh){
+            odata.nested_velocity.v[2] = max_speed_w_thresh;
+        }else if (odata.nested_velocity.v[2] < -max_speed_w_thresh){
+            odata.nested_velocity.v[2] = -max_speed_w_thresh;
+        }
 
-        ROS_WARN("Estimated Velocity: %f, %f",
+        if (std::isnan(odata.nested_velocity.v[2])){
+            odata.nested_velocity.v[2] = 0.0;
+        }
+
+        ROS_WARN("Estimated Velocity: %f, %f, %f",
                  odata.nested_velocity.v[0],
-                odata.nested_velocity.v[1]
+                odata.nested_velocity.v[1],
+                odata.nested_velocity.v[2]
                 );
         ROS_WARN("Delta Time: %f", odata.time);
 
@@ -2058,7 +2112,9 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
           UpdateSensor function calculates the weights for the samples from the sensor readings.
         */
 
+//        if (propagate_based_on_observation){
         lasers_[laser_index]->UpdateSensor(pf_, (AMCLSensorData*)&ldata);
+//        }
 
         lasers_update_[laser_index] = false;
 

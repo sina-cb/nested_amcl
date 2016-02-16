@@ -567,7 +567,7 @@ double AMCLLaser::NestedBeamModel(pf_sample_t *upper_sample, AMCLLaserData *data
     } // end looping through all samples
 
     if (total_weight < 0.01){
-        printf("\n\nAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAaa\n\n");
+        printf("\n\namcl_laser.cpp !!!!!TOTAL Weight is less than 0.01!!!!!\n\n");
     }
 
     return(total_weight);
