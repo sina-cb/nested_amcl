@@ -248,7 +248,10 @@ bool AMCLOdom::UpdateNestedAction(pf_t *pf, double upper_delta_trans, pf_vector_
     set = pf->sets + pf->current_set;
     // pf_vector_t old_pose = pf_vector_sub(ndata->pose, ndata->delta);
 
-    double delta_trans = 0.0;
+    // This is the linear transition estimation
+    double delta_trans = std::sqrt(std::pow(vel.v[0] * time, 2) + std::pow(vel.v[1] * time, 2));
+    // This is the rotation estiamtion
+    double delta_rot = vel.v[2] * time;
 
     for (int i = 0; i < set->sample_count; i++)
     {
@@ -256,19 +259,15 @@ bool AMCLOdom::UpdateNestedAction(pf_t *pf, double upper_delta_trans, pf_vector_
         pf_vector_t old_pose = sample->pose;
 
         // get the new pose and delta in these passed arguments
-        getNestedParticlePose(&sample->pose, &delta, vel, time);
+        getNestedParticlePose(&sample->pose, &delta, delta_trans, delta_rot);
 
         pf->fake_nested_odomPose = sample->pose;
         pf->fake_nested_odomDelta = delta;
 
         if(this->model_type == ODOM_MODEL_OMNI)
         {
-            double delta_rot, delta_bearing;
+            double delta_bearing;
             double delta_trans_hat, delta_rot_hat, delta_strafe_hat;
-
-            delta_trans = sqrt(delta.v[0]*delta.v[0] +
-                    delta.v[1]*delta.v[1]);
-            delta_rot = delta.v[2];
 
             // Precompute a couple of things
             double trans_hat_stddev = (alpha3 * (delta_trans*delta_trans) +
@@ -365,28 +364,27 @@ bool AMCLOdom::UpdateNestedAction(pf_t *pf, double upper_delta_trans, pf_vector_
 
 
 // SINA: This method will propagate the odom
-void AMCLOdom::getNestedParticlePose(pf_vector_t *odom_pose, pf_vector_t *delta, pf_vector_t vel, double time){
-    double dice = drand48() * 100;
-
+void AMCLOdom::getNestedParticlePose(pf_vector_t *odom_pose, pf_vector_t *delta, double delta_, double delta_phi){
     double map_range = map_calc_range(this->map, odom_pose->v[0], odom_pose->v[1], odom_pose->v[2], 10);
 
     if(map_range < 1){
-        if(dice <= 50){
-            delta->v[0] = 0.00;
-            delta->v[1] = 0.00;
-            delta->v[2] = (M_PI/6);
-        }
-
-        else{
-            delta->v[0] = 0.00;
-            delta->v[1] = 0.00;
-            delta->v[2] = -(M_PI/6);
+        double dice = drand48() * 100;
+        double recovery_turn = (M_PI / 6);
+        if (dice <= 50){
+            delta->v[0] = std::cos(odom_pose->v[2] + recovery_turn) * delta_;
+            delta->v[1] = std::sin(odom_pose->v[2] + recovery_turn) * delta_;
+            delta->v[2] = recovery_turn;
+        } else {
+            recovery_turn *= -1;
+            delta->v[0] = std::cos(odom_pose->v[2] + recovery_turn) * delta_;
+            delta->v[1] = std::sin(odom_pose->v[2] + recovery_turn) * delta_;
+            delta->v[2] = recovery_turn;
         }
     }
     else{
-        delta->v[0] = vel.v[0] * time;
-        delta->v[1] = vel.v[1] * time;
-        delta->v[2] = vel.v[2] * time;
+        delta->v[0] = std::cos(odom_pose->v[2] + delta_phi) * delta_;
+        delta->v[1] = std::sin(odom_pose->v[2] + delta_phi) * delta_;
+        delta->v[2] = delta_phi;
     }
 
 }

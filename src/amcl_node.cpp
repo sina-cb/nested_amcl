@@ -1012,7 +1012,7 @@ void AmclNode::collect_sample(geometry_msgs::PoseWithCovarianceStamped *our_pose
     }
 
     // Collect Samples Here!!!
-    if (nested_MSE == -1 || nested_MSE <= .3){
+    if (observations.size() != 0 || nested_MSE <= .3){
 
         //        ROS_INFO("Times: %f\t%f\t%f", sampling_time[0].toSec(), sampling_time[1].toSec(), sampling_time[2].toSec());
 
@@ -1800,30 +1800,35 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
         }else{
 
             if (hmm.initialized_()){
-                vector<Observation> * obs = new vector<Observation>;
-                obs->push_back(observations[observations.size() - 3]);
-                obs->push_back(observations[observations.size() - 2]);
-                obs->push_back(observations[observations.size() - 1]);
+                //                vector<Observation> * obs = new vector<Observation>;
+                //                obs->push_back(observations[observations.size() - 3]);
+                //                obs->push_back(observations[observations.size() - 2]);
+                //                obs->push_back(observations[observations.size() - 1]);
 
                 int number_of_sampling = 5;
                 int number_of_forward_samples = 100;
 
-                DETree result_alpha = hmm.forward(obs, number_of_forward_samples);
+                DETree result_alpha = hmm.forward(&observations, number_of_forward_samples);
                 Sampler sampler;
 
                 Sample sample_accl;
                 sample_accl = sampler.sample(&result_alpha);
-                for (size_t i = 0; i < number_of_sampling - 1; i++){
-                    Sample temp = sampler.sample(&result_alpha);
 
-                    sample_accl.values[0] = sample_accl.values[0] + temp.values[0];
-                    sample_accl.values[1] = sample_accl.values[1] + temp.values[1];
-                    sample_accl.values[2] = sample_accl.values[2] + temp.values[2];
+                if (std::abs(sample_accl.values[0] - velocity_samples[1].v[0]) > 0.2
+                        || std::abs(sample_accl.values[1] - velocity_samples[1].v[1]) > 0.2
+                        || std::abs(sample_accl.values[2] - velocity_samples[1].v[2]) > 0.1){
+
+                    ROS_WARN("Huge difference, resampling!");
+                    sample_accl = sampler.sample(&result_alpha);
                 }
 
-                sample_accl.values[0] /= (double)number_of_sampling;
-                sample_accl.values[1] /= (double)number_of_sampling;
-                sample_accl.values[2] /= (double)number_of_sampling;
+                if (std::abs(sample_accl.values[0] - velocity_samples[1].v[0]) > 0.2
+                        || std::abs(sample_accl.values[1] - velocity_samples[1].v[1]) > 0.2
+                        || std::abs(sample_accl.values[2] - velocity_samples[1].v[2]) > 0.1){
+
+                    ROS_WARN("Huge difference, resampling for the last time!");
+                    sample_accl = sampler.sample(&result_alpha);
+                }
 
                 ROS_WARN("Velocity Sample: %f, %f, %f",
                          sample_accl.values[0],
@@ -1831,24 +1836,28 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
                         sample_accl.values[2]
                         );
 
-//                sample_accl.values[0] = (sample_accl.values[0] + velocity_samples[2].v[0]) / 2;
-//                sample_accl.values[1] = (sample_accl.values[1] + velocity_samples[2].v[1]) / 2;
-//                sample_accl.values[2] = (sample_accl.values[2] + velocity_samples[2].v[2]) / 2;
-
                 odata.nested_velocity.v[0] = sample_accl.values[0];
                 odata.nested_velocity.v[1] = sample_accl.values[1];
-                odata.nested_velocity.v[1] = sample_accl.values[2];
+                odata.nested_velocity.v[2] = sample_accl.values[2];
+
+                // Setting the last velocity sample to the one estimated now!
+                velocity_samples[1].v[0] = odata.nested_velocity.v[0];
+                velocity_samples[1].v[1] = odata.nested_velocity.v[1];
+                velocity_samples[1].v[2] = odata.nested_velocity.v[2];
+
+                ROS_DEBUG("Observation Size: %d, M Size: %d, V Size: %d", observations.size(), m_.size(), v_.size());
 
             }else{
-                odata.nested_velocity.v[0] = .0;
-                odata.nested_velocity.v[1] = .0;
-                odata.nested_velocity.v[2] = .0;
+                ROS_WARN("No HMM and no obsevations, just use the previous velocity as our current velocity!!!");
+                odata.nested_velocity.v[0] = velocity_samples[1].v[0];
+                odata.nested_velocity.v[1] = velocity_samples[1].v[1];
+                odata.nested_velocity.v[2] = velocity_samples[1].v[2];
             }
         }
 
-//        if (odata.time > 0.5){
-//            odata.time = 0.5;
-//        }
+        if (odata.time > 1.2){
+            odata.time = 1.2;
+        }
 
         double max_speed_thresh = 0.4;
         double max_speed_w_thresh = 0.1;
@@ -1873,12 +1882,19 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
             odata.nested_velocity.v[2] = 0.0;
         }
 
+        ROS_WARN("Delta Time: %f", odata.time);
+
         ROS_WARN("Estimated Velocity: %f, %f, %f",
                  odata.nested_velocity.v[0],
                 odata.nested_velocity.v[1],
                 odata.nested_velocity.v[2]
                 );
-        ROS_WARN("Delta Time: %f", odata.time);
+
+        ROS_WARN("Estimated Delta: %f, %f, %f",
+                 odata.nested_velocity.v[0] * odata.time,
+                odata.nested_velocity.v[1] * odata.time,
+                odata.nested_velocity.v[2] * odata.time
+                );
 
         /**
           Notes for me:
@@ -2112,9 +2128,9 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
           UpdateSensor function calculates the weights for the samples from the sensor readings.
         */
 
-//        if (propagate_based_on_observation){
+        //        if (propagate_based_on_observation){
         lasers_[laser_index]->UpdateSensor(pf_, (AMCLSensorData*)&ldata);
-//        }
+        //        }
 
         lasers_update_[laser_index] = false;
 

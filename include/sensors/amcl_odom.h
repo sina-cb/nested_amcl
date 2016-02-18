@@ -86,7 +86,7 @@ public: virtual bool UpdateNestedAction(pf_t *nested_pf, double upper_delta_tran
                                         pf_vector_t vel, double time); //, AMCLSensorData *nested_odomData);
 
     // Generates fake odom delta based on a behaviour model
-    void getNestedParticlePose(pf_vector_t *odom_pose, pf_vector_t *delta, pf_vector_t vel, double time);
+    void getNestedParticlePose(pf_vector_t *odom_pose, pf_vector_t *delta, double delta_, double delta_phi);
 
     // Current data timestamp
 private: double time;
