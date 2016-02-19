@@ -1796,9 +1796,6 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
             odata.nested_velocity.v[1] = velocity_samples[1].v[1];
             odata.nested_velocity.v[2] = velocity_samples[1].v[2];
 
-            odata.landmark_r = 1.0;
-            odata.landmark_phi = 1.0;
-
             propagate_based_on_observation = false;
         }else{
 
@@ -1834,14 +1831,11 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
                 odata.nested_velocity.v[1] = velocity_samples[1].v[1];
                 odata.nested_velocity.v[2] = velocity_samples[1].v[2];
             }
-
-            odata.landmark_r = -1;
-            odata.landmark_phi = -1;
         }
 
-//        if (odata.time > 1.2){
-//            odata.time = 1.2;
-//        }
+        if (odata.time > 1.2){
+            odata.time = 1.2;
+        }
 
         double max_speed_thresh = 0.4;
         double max_speed_w_thresh = 0.3;
@@ -1865,6 +1859,14 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
         if (std::isnan(odata.nested_velocity.v[2])){
             odata.nested_velocity.v[2] = 0.0;
         }
+
+        double old_vel_angle = std::asin(velocity_samples[0].v[1] / sqrt(std::pow(velocity_samples[0].v[1], 2) +
+                std::pow(velocity_samples[0].v[0], 2)));
+
+        double new_vel_angle = std::asin(velocity_samples[1].v[1] / sqrt(std::pow(velocity_samples[1].v[1], 2) +
+                std::pow(velocity_samples[1].v[0], 2)));
+
+        odata.velocity_angle_diff = (old_vel_angle - new_vel_angle);
 
         ROS_WARN("Delta Time: %f", odata.time);
 

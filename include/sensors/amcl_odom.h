@@ -54,11 +54,7 @@ public: pf_vector_t delta;
     // Change in the nested particles' pose
 public: pf_vector_t nested_velocity;
 
-    // Let the Odom update know if it sees the leader or not
-    // landmark_r = -1 --> no observation
-public: double landmark_r;
-    // Let the Odom update know if it sees the leader or not
-public: double landmark_phi;
+public: double velocity_angle_diff;
 };
 
 
@@ -88,11 +84,11 @@ public: virtual bool UpdateAction(pf_t *pf, AMCLSensorData *data);
 
     // Update the nested filter based on the action model.  Returns true if the filter
     // has been updated.
-public: virtual bool UpdateNestedAction(pf_t *nested_pf, double upper_delta_trans,
-                                        pf_vector_t vel, double time, double observation_avail); //, AMCLSensorData *nested_odomData);
+public: virtual bool UpdateNestedAction(pf_t *nested_pf, pf_vector_t vel,
+                                        double correction_angle, double time);
 
     // Generates fake odom delta based on a behaviour model
-    void getNestedParticlePose(pf_vector_t *odom_pose, pf_vector_t *delta, pf_vector_t vel, double time, double observation_avail);
+    void getNestedParticlePose(pf_vector_t *odom_pose, pf_vector_t *delta, pf_vector_t vel, double correction_angle, double time);
 
     // Current data timestamp
 private: double time;
