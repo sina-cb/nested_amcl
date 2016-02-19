@@ -228,7 +228,8 @@ bool AMCLOdom::UpdateAction(pf_t *pf, AMCLSensorData *data)
             this->UpdateNestedAction(nested_pf_sample,
                                      delta_trans,
                                      ndata->nested_velocity,
-                                     data->time
+                                     data->time,
+                                     ndata->landmark_r
                                      );
         }
     }
@@ -236,7 +237,7 @@ bool AMCLOdom::UpdateAction(pf_t *pf, AMCLSensorData *data)
 }
 
 
-bool AMCLOdom::UpdateNestedAction(pf_t *pf, double upper_delta_trans, pf_vector_t vel, double time){
+bool AMCLOdom::UpdateNestedAction(pf_t *pf, double upper_delta_trans, pf_vector_t vel, double time, double observation_avail){
     // AMCLOdomData *ndata =
     //ndata = (AMCLOdomData*) data;
 
@@ -249,9 +250,9 @@ bool AMCLOdom::UpdateNestedAction(pf_t *pf, double upper_delta_trans, pf_vector_
     // pf_vector_t old_pose = pf_vector_sub(ndata->pose, ndata->delta);
 
     // This is the linear transition estimation
-    double delta_trans = std::sqrt(std::pow(vel.v[0] * time, 2) + std::pow(vel.v[1] * time, 2));
+    double delta_trans = -1;
     // This is the rotation estiamtion
-    double delta_rot = vel.v[2] * time;
+    double delta_rot = -1;
 
     for (int i = 0; i < set->sample_count; i++)
     {
@@ -259,7 +260,10 @@ bool AMCLOdom::UpdateNestedAction(pf_t *pf, double upper_delta_trans, pf_vector_
         pf_vector_t old_pose = sample->pose;
 
         // get the new pose and delta in these passed arguments
-        getNestedParticlePose(&sample->pose, &delta, delta_trans, delta_rot);
+        getNestedParticlePose(&sample->pose, &delta, vel, time, observation_avail);
+
+        delta_trans = sqrt(delta.v[0] * delta.v[0] + delta.v[1] * delta.v[1]);
+        delta_rot   = delta.v[2];
 
         pf->fake_nested_odomPose = sample->pose;
         pf->fake_nested_odomDelta = delta;
@@ -270,12 +274,12 @@ bool AMCLOdom::UpdateNestedAction(pf_t *pf, double upper_delta_trans, pf_vector_
             double delta_trans_hat, delta_rot_hat, delta_strafe_hat;
 
             // Precompute a couple of things
-            double trans_hat_stddev = (alpha3 * (delta_trans*delta_trans) +
-                                       alpha1 * (delta_rot*delta_rot));
-            double rot_hat_stddev = (alpha4 * (delta_rot*delta_rot) +
-                                     alpha2 * (delta_trans*delta_trans));
-            double strafe_hat_stddev = (alpha1 * (delta_rot*delta_rot) +
-                                        alpha5 * (delta_trans*delta_trans));
+            double trans_hat_stddev = (alpha3 * (delta_trans * delta_trans) +
+                                       alpha1 * (delta_rot * delta_rot));
+            double rot_hat_stddev = (alpha4 * (delta_rot * delta_rot) +
+                                     alpha2 * (delta_trans * delta_trans));
+            double strafe_hat_stddev = (alpha1 * (delta_rot * delta_rot) +
+                                        alpha5 * (delta_trans * delta_trans));
 
             { // calculations specific to the OMNI model
                 delta_bearing = angle_diff(atan2(delta.v[1], delta.v[0]),
@@ -356,7 +360,7 @@ bool AMCLOdom::UpdateNestedAction(pf_t *pf, double upper_delta_trans, pf_vector_
 
         for(int i=0; i< set->sample_count; i++){
             nested_pf_sample = nested_pf_set + i;
-            this->UpdateNestedAction(nested_pf_sample, delta_trans, vel, time);
+            this->UpdateNestedAction(nested_pf_sample, delta_trans, vel, time, observation_avail);
         }
     }
     return true;
@@ -364,10 +368,13 @@ bool AMCLOdom::UpdateNestedAction(pf_t *pf, double upper_delta_trans, pf_vector_
 
 
 // SINA: This method will propagate the odom
-void AMCLOdom::getNestedParticlePose(pf_vector_t *odom_pose, pf_vector_t *delta, double delta_, double delta_phi){
+void AMCLOdom::getNestedParticlePose(pf_vector_t *odom_pose, pf_vector_t *delta, pf_vector_t vel, double time, double observation_avail){
     double map_range = map_calc_range(this->map, odom_pose->v[0], odom_pose->v[1], odom_pose->v[2], 10);
 
-    if(map_range < 1){
+    double delta_ = sqrt(vel.v[0] * vel.v[0] + vel.v[1] * vel.v[1]) * time;
+    double delta_phi = vel.v[2] * time;
+
+    if(map_range < std::min(delta_, 0.5)){
         double dice = drand48() * 100;
         double recovery_turn = (M_PI / 6);
         if (dice <= 50){
@@ -382,9 +389,24 @@ void AMCLOdom::getNestedParticlePose(pf_vector_t *odom_pose, pf_vector_t *delta,
         }
     }
     else{
-        delta->v[0] = std::cos(odom_pose->v[2] + delta_phi) * delta_;
-        delta->v[1] = std::sin(odom_pose->v[2] + delta_phi) * delta_;
+        //        if (observation_avail == 1){
+
+        double angle = asin(vel.v[1] / sqrt(vel.v[0] * vel.v[0] + vel.v[1] * vel.v[1]));
+
+        delta->v[0] = std::cos(odom_pose->v[2] + (angle / 4)) * delta_;
+        delta->v[1] = std::sin(odom_pose->v[2] + (angle / 4)) * delta_;
         delta->v[2] = delta_phi;
+        //        }else{
+        //            double move_angle = asin(vel.v[1] / sqrt(vel.v[0] * vel.v[0] + vel.v[1] * vel.v[1]));
+        //            printf("Angle: %f in SIN: %f\n", move_angle, odom_pose->v[2] - move_angle);
+
+        //            delta->v[0] = std::cos(odom_pose->v[2] - move_angle) * delta_;
+        //            delta->v[1] = std::sin(odom_pose->v[2] - move_angle) * delta_;
+        //            delta->v[2] = delta_phi + odom_pose->v[2];
+        ////            delta->v[0] = vel.v[0] * time;
+        ////            delta->v[1] = vel.v[1] * time;
+        ////            delta->v[2] = vel.v[2] * time;
+        //        }
     }
 
 }

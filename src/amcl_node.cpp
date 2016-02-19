@@ -1796,16 +1796,13 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
             odata.nested_velocity.v[1] = velocity_samples[1].v[1];
             odata.nested_velocity.v[2] = velocity_samples[1].v[2];
 
+            odata.landmark_r = 1.0;
+            odata.landmark_phi = 1.0;
+
             propagate_based_on_observation = false;
         }else{
 
             if (hmm.initialized_()){
-                //                vector<Observation> * obs = new vector<Observation>;
-                //                obs->push_back(observations[observations.size() - 3]);
-                //                obs->push_back(observations[observations.size() - 2]);
-                //                obs->push_back(observations[observations.size() - 1]);
-
-                int number_of_sampling = 5;
                 int number_of_forward_samples = 100;
 
                 DETree result_alpha = hmm.forward(&observations, number_of_forward_samples);
@@ -1813,22 +1810,6 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
 
                 Sample sample_accl;
                 sample_accl = sampler.sample(&result_alpha);
-
-                if (std::abs(sample_accl.values[0] - velocity_samples[1].v[0]) > 0.2
-                        || std::abs(sample_accl.values[1] - velocity_samples[1].v[1]) > 0.2
-                        || std::abs(sample_accl.values[2] - velocity_samples[1].v[2]) > 0.1){
-
-                    ROS_WARN("Huge difference, resampling!");
-                    sample_accl = sampler.sample(&result_alpha);
-                }
-
-                if (std::abs(sample_accl.values[0] - velocity_samples[1].v[0]) > 0.2
-                        || std::abs(sample_accl.values[1] - velocity_samples[1].v[1]) > 0.2
-                        || std::abs(sample_accl.values[2] - velocity_samples[1].v[2]) > 0.1){
-
-                    ROS_WARN("Huge difference, resampling for the last time!");
-                    sample_accl = sampler.sample(&result_alpha);
-                }
 
                 ROS_WARN("Velocity Sample: %f, %f, %f",
                          sample_accl.values[0],
@@ -1853,14 +1834,17 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
                 odata.nested_velocity.v[1] = velocity_samples[1].v[1];
                 odata.nested_velocity.v[2] = velocity_samples[1].v[2];
             }
+
+            odata.landmark_r = -1;
+            odata.landmark_phi = -1;
         }
 
-        if (odata.time > 1.2){
-            odata.time = 1.2;
-        }
+//        if (odata.time > 1.2){
+//            odata.time = 1.2;
+//        }
 
         double max_speed_thresh = 0.4;
-        double max_speed_w_thresh = 0.1;
+        double max_speed_w_thresh = 0.3;
 
         if (odata.nested_velocity.v[0] > max_speed_thresh){
             odata.nested_velocity.v[0] = max_speed_thresh;
