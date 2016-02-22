@@ -509,12 +509,6 @@ double AMCLLaser::NestedBeamModel(pf_sample_t *upper_sample, AMCLLaserData *data
                     }
                 }
 
-                /*
-                step = (data->range_count - 1) / (self->max_beams - 1);
-
-                z = self->map->max_occ_dist - 0.1 ;
-                */
-
                 // Gaussian model
                 // NOTE: this should have a normalization of 1/(sqrt(2pi)*sigma)
 
@@ -541,6 +535,16 @@ double AMCLLaser::NestedBeamModel(pf_sample_t *upper_sample, AMCLLaserData *data
                 p *= 0;
             }
 #endif
+
+            int mi, mj;
+            mi = MAP_GXWX(self->map, pose.v[0]);
+            mj = MAP_GYWY(self->map, pose.v[1]);
+
+            if (self->map->cells[MAP_INDEX(self->map, mi, mj)].occ_state >= 0){
+                pz = 0.0;
+                p *= 0;
+            }
+
         } // end if (invalid MAP locations)
 
         assert(pz <= 1.0);

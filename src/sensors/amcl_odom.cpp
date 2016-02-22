@@ -352,7 +352,6 @@ bool AMCLOdom::UpdateNestedAction(pf_t *pf, pf_vector_t vel, double correction_a
     } // end for
 
     if(pf->nesting_lvl > 0){
-        //AMCLOdomData *nested_odomData;
         pf_t *nested_pf_set, *nested_pf_sample;
 
         nested_pf_set = pf_get_this_nested_set(pf, pf->current_set);
@@ -389,7 +388,7 @@ void AMCLOdom::getNestedParticlePose(pf_vector_t *odom_pose, pf_vector_t *delta,
     }
     else{
         double vel_angle = asin(vel.v[1] / sqrt(vel.v[0] * vel.v[0] + vel.v[1] * vel.v[1]));
-        double angle_correction = (vel_angle - odom_pose->v[2]) / 2.0;
+        double angle_correction = (vel_angle - odom_pose->v[2]) / 3.0;
 
         delta->v[0] = std::cos(odom_pose->v[2] + (correction_angle)) * delta_;
         delta->v[1] = std::sin(odom_pose->v[2] + (correction_angle)) * delta_;

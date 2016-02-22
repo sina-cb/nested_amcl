@@ -1867,6 +1867,9 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
                 std::pow(velocity_samples[1].v[0], 2)));
 
         odata.velocity_angle_diff = (old_vel_angle - new_vel_angle);
+        if(std::isnan(odata.velocity_angle_diff)){
+            odata.velocity_angle_diff = 0.0;
+        }
 
         ROS_WARN("Delta Time: %f", odata.time);
 
@@ -1882,6 +1885,8 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
                 odata.nested_velocity.v[2] * odata.time
                 );
 
+        ROS_WARN("Agnle Correction: %f", odata.velocity_angle_diff);
+
         /**
           Notes for me:
           UpdateAction essentially applies the transition function to all samples present in the sets of samples that are contained
@@ -1894,8 +1899,6 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
         // Use the action data to update the filter
         odom_->UpdateAction(pf_, (AMCLSensorData*)&odata);
 
-        // Pose at last filter update
-        //this->pf_odom_pose = pose;
     }
 
     bool resampled = false;
@@ -1913,13 +1916,34 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
 
         true_pose_service.request.model_name = std::string("Robot1");
         if (true_pose_client.call(true_pose_service))
-        {
+        {            
+//            tf::Vector3 origin_map(0, 0, 0);
+//            tf::Quaternion quaternion_map(0, 0, -.15);
+
+//            tf::Transform map_rotation;
+//            map_rotation.setOrigin(origin_map);
+//            map_rotation.setRotation(quaternion_map);
+
+//            tf::Vector3 origin_pose(true_pose_service.response.pose.position.x, true_pose_service.response.pose.position.y, 0);
+//            tf::Quaternion quaternion_pose(0, 0, 0);
+
+//            tf::Transform pose_tansform;
+//            pose_tansform.setOrigin(origin_pose);
+//            pose_tansform.setRotation(quaternion_pose);
+
+//            tf::Transform result = pose_tansform * map_rotation;
+
+//            true_pose_normal.v[0] = result.getOrigin().x();
+//            true_pose_normal.v[1] = result.getOrigin().y();
+//            true_pose_normal.v[2] = 0.0;
+
             true_pose_normal.v[0] = true_pose_service.response.pose.position.x;
             true_pose_normal.v[1] = true_pose_service.response.pose.position.y;
             true_pose_normal.v[2] = 0.0;
-            ROS_DEBUG("\n Normal true pose \n\t x: %f \n\t y: %f \n",
-                      true_pose_service.response.pose.position.x,
-                      true_pose_service.response.pose.position.y);
+
+            ROS_INFO("\n Normal true pose \n\t x: %f \n\t y: %f \n",
+                      true_pose_normal.v[0],
+                      true_pose_normal.v[1]);
         }
         else
         {
@@ -1930,12 +1954,33 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
         true_pose_service.request.model_name = std::string("Robot2");
         if (true_pose_client.call(true_pose_service))
         {
+//            tf::Vector3 origin_map(0, 0, 0);
+//            tf::Quaternion quaternion_map(0, 0, -.15);
+
+//            tf::Transform map_rotation;
+//            map_rotation.setOrigin(origin_map);
+//            map_rotation.setRotation(quaternion_map);
+
+//            tf::Vector3 origin_pose(true_pose_service.response.pose.position.x, true_pose_service.response.pose.position.y, 0);
+//            tf::Quaternion quaternion_pose(0, 0, 0);
+
+//            tf::Transform pose_tansform;
+//            pose_tansform.setOrigin(origin_pose);
+//            pose_tansform.setRotation(quaternion_pose);
+
+//            tf::Transform result = pose_tansform * map_rotation;
+
+//            true_pose_nested.v[0] = result.getOrigin().x();
+//            true_pose_nested.v[1] = result.getOrigin().y();
+//            true_pose_nested.v[2] = 0.0;
+
             true_pose_nested.v[0] = true_pose_service.response.pose.position.x;
             true_pose_nested.v[1] = true_pose_service.response.pose.position.y;
             true_pose_nested.v[2] = 0.0;
-            ROS_DEBUG("\n Nested true pose \n\t x: %f \n\t y: %f \n",
-                      true_pose_service.response.pose.position.x,
-                      true_pose_service.response.pose.position.y);
+
+            ROS_INFO("\n Nested true pose \n\t x: %f \n\t y: %f \n",
+                      true_pose_nested.v[0],
+                      true_pose_nested.v[1]);
         }
         else
         {
@@ -2245,14 +2290,6 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
 
                     if( sqrt(current_nested_SE) <= 1.0 )
                         nested_particles_within_1m++;
-
-                    /*
-                    ROS_INFO("upper_lvl_particle: %d | nested_particle: %d ----- nested pose: %0.3f, %0.3f, %0.3f",
-                             i, j,
-                             nested_particles_set->samples[j].pose.v[0],
-                             nested_particles_set->samples[j].pose.v[1],
-                             nested_particles_set->samples[j].pose.v[2]);
-                    */
 
                 }
             }
