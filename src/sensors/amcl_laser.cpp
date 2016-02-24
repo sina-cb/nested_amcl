@@ -398,10 +398,6 @@ double AMCLLaser::NestedBeamModel(pf_sample_t *upper_sample, AMCLLaserData *data
 
         else{ // Valid MAP locations
 
-#if PENALTY
-            bool far_down_weight = false;
-            bool bearing_down_weight = false;
-#endif
             if(data->isLandmarkObserved){ //When we have a sighting of the other robot
 
                 obs_range = data->landmark_r;
@@ -429,29 +425,6 @@ double AMCLLaser::NestedBeamModel(pf_sample_t *upper_sample, AMCLLaserData *data
 
                 weighting_multiplier = data->color_beams;
 
-#if PENALTY
-                int upper_x0, upper_y0;
-                upper_x0 = MAP_GXWX(self->map, upper_pose.v[0]);
-                upper_y0 = MAP_GYWY(self->map, upper_pose.v[1]);
-
-                double dist = sqrt(pow((x0 - upper_x0), 2.0) + pow((y0 - upper_y0), 2.0));
-
-                // Down weight all of the samples which are so far away from the leader
-                // according to the laser reading. When the laser reads a value of x, we
-                // don't need to worry a lot about samples from the other side of the map.
-                if (dist > 1.2 * obs_range){
-                    far_down_weight = true;
-                }
-
-                // Down weight the samples which are not aligned with the upper sample
-                // This comes from the assumption that we are following the leader and
-                // We should have almost the same bearings!
-                printf("FABS Bearing: %f\n Bearing 1: %f\nBearing 2: %f\n", fabs(sample->pose.v[2] - upper_pose.v[2]),
-                        sample->pose.v[2], upper_pose.v[2]);
-                if (fabs(sample->pose.v[2] - upper_pose.v[2]) > M_PI / 3){
-                    bearing_down_weight = true;
-                }
-#endif
             } else { // When we don't have a sighting of the other robot
 
                 sample_abs_angle = atan2((pose.v[1] - upper_pose.v[1]), (pose.v[0] - upper_pose.v[0]));
@@ -524,25 +497,11 @@ double AMCLLaser::NestedBeamModel(pf_sample_t *upper_sample, AMCLLaserData *data
 
 
             } // end else (when there's no sighting of the other robot)
-#if PENALTY
-            if (far_down_weight){
-                pz = 0.0;
-                p *= 0;
-            }
 
-            if (bearing_down_weight){
-                pz = 0.0;
-                p *= 0;
-            }
-#endif
-
-            int mi, mj;
-            mi = MAP_GXWX(self->map, pose.v[0]);
-            mj = MAP_GYWY(self->map, pose.v[1]);
-
-            if (self->map->cells[MAP_INDEX(self->map, mi, mj)].occ_state >= 0){
-                pz = 0.0;
-                p *= 0;
+            int occ_state = map_get_cell(self->map, pose.v[0], pose.v[1], pose.v[2])->occ_state;
+            if (occ_state >= 0){
+                pz /= 10;
+                p  /= 10;
             }
 
         } // end if (invalid MAP locations)

@@ -75,8 +75,6 @@ double* map_side_walls(map_t *map, pf_vector_t pose, double max_range){
         }
     }
 
-    ROS_ASSERT(index != -1);
-
     double* results = new double[2];
     switch (index) {
     case 0:
@@ -96,7 +94,8 @@ double* map_side_walls(map_t *map, pf_vector_t pose, double max_range){
         results[1] = map_calc_range(map, pose.v[0], pose.v[1], (M_PI), max_range);
         break;
     default:
-        printf("This should not happen at all!!!\n");
+        results[0] = max_range;
+        results[1] = max_range;
         break;
     }
 

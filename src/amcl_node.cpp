@@ -230,7 +230,8 @@ private:
 #endif
 
     // KPM: pose generating function for Dual of MCL
-    static pf_vector_t dualMCL_PoseGenerator(void* arg, double r, double phi, double landmark_x, double landmark_y);
+    static pf_vector_t dualMCL_PoseGenerator(void* arg, double r, double phi, double landmark_x,
+                                             double landmark_y);
 
     /* SINA: Function to init the HMM object */
     void init_HMM();
@@ -1005,7 +1006,7 @@ void AmclNode::collect_sample(geometry_msgs::PoseWithCovarianceStamped *our_pose
     int cross_walk_seen = map_see_crosswalk(this->map_, leader_pose_v, 0.2, 5);
     int turn_point_seen = map_see_turnpoint(this->map_, leader_pose_v, 0.2, 5);
     int junction_seen   = map_see_junction (this->map_, leader_pose_v, 0.2, 5);
-    double* walls_dists = map_side_walls(this->map_, leader_pose_v, 3);
+    double* walls_dists = map_side_walls   (this->map_, leader_pose_v, 3     );
 
     if (!walls_dists){
         return;
@@ -1488,8 +1489,8 @@ AmclNode::uniformPoseGenerator(void* arg)
     return p;
 }
 
-pf_vector_t
-AmclNode::dualMCL_PoseGenerator(void* arg, double landmark_r, double landmark_phi, double landmark_x_param, double landmark_y_param){
+pf_vector_t AmclNode::  dualMCL_PoseGenerator(void* arg, double landmark_r, double landmark_phi, double landmark_x_param,
+                                double landmark_y_param){
     pf_vector_t newPose;
 
     map_t* map = (map_t*) arg;
@@ -1505,7 +1506,7 @@ AmclNode::dualMCL_PoseGenerator(void* arg, double landmark_r, double landmark_ph
         //newPose.v[0] = map->size_x;
         //newPose.v[1] = map->size_y;
         //newPose.v[2] = 0;
-        ROS_DEBUG("Random Pose_1: %f, %f, %f",newPose.v[0],newPose.v[1],newPose.v[2]);
+        ROS_DEBUG("Random Pose_1: %f, %f, %f", newPose.v[0], newPose.v[1], newPose.v[2]);
         return newPose;
     }
 
@@ -1514,19 +1515,16 @@ AmclNode::dualMCL_PoseGenerator(void* arg, double landmark_r, double landmark_ph
         //newPose.v[0] = map->size_x;
         //newPose.v[1] = map->size_y;
         //newPose.v[2] = 0;
-        ROS_DEBUG("Random Pose_2: %f, %f, %f",newPose.v[0],newPose.v[1],newPose.v[2]);
+        ROS_DEBUG("Random Pose_2: %f, %f, %f", newPose.v[0], newPose.v[1], newPose.v[2]);
         return newPose;
     }
-
-    // newPose.v[0]=0;
-    // newPose.v[1]=0;
-    // newPose.v[2]=0;
 
     double gamma = 0;
 
     if(landmark_r > 0){
         for(;;){
-            gamma = drand48() * 2 * M_PI;
+            double max_phi_range = 2 * M_PI;
+            gamma = drand48() * max_phi_range;
 
             double landmark_size_ambiguity = (drand48() - 0.5) * 0.1;
 
@@ -1534,16 +1532,15 @@ AmclNode::dualMCL_PoseGenerator(void* arg, double landmark_r, double landmark_ph
 
             newPose.v[0] = (landmark_r + landmark_size_ambiguity) *  cos(gamma) + landmark_x;
             newPose.v[1] = (landmark_r + landmark_size_ambiguity) *  sin(gamma) + landmark_y;
-            newPose.v[2] = gamma - M_PI - (landmark_phi + landmark_phi_ambiguity);
+
+            newPose.v[2] = gamma - (max_phi_range / 2.0) - (landmark_phi + landmark_phi_ambiguity);
 
             int i = MAP_GXWX(map, newPose.v[0]);
             int j = MAP_GYWY(map, newPose.v[1]);
-            if(MAP_VALID(map,i,j) && (map->cells[MAP_INDEX(map,i,j)].occ_state == -1))
+            if(MAP_VALID(map, i, j) && (map->cells[MAP_INDEX(map, i, j)].occ_state == -1))
                 break;
         }
     }
-
-    //ROS_INFO("Dual Pose: %f, %f, %f",newPose.v[0], newPose.v[1], newPose.v[2]);
 
     return newPose;
 }
@@ -2180,11 +2177,15 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
             pf_init_leader_pose_cov.m[1][1] = init_leader_cov_[1];
             pf_init_leader_pose_cov.m[2][2] = init_leader_cov_[2];
 
+            pf_vector_t leader_pose_temp;
+            leader_pose_temp.v[0] = nested_last_published_pose.pose.pose.position.x;
+            leader_pose_temp.v[1] = nested_last_published_pose.pose.pose.position.y;
+            leader_pose_temp.v[2] = tf::getYaw(nested_last_published_pose.pose.pose.orientation);
+
             // landmark_loc_x and y are zero all the time. They are not used in resampling
             pf_update_resample(pf_, landmark_r, landmark_phi, landmark_loc_x, landmark_loc_y,
                                pf_init_leader_pose_mean,
-                               pf_init_leader_pose_cov
-                               );
+                               pf_init_leader_pose_cov);
             landmark_r = 0;
             landmark_phi = 0;
 
