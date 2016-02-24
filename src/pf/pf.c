@@ -530,7 +530,8 @@ static void normalize_weights(double total, pf_t* pf){
 
 // Resample the distribution
 void pf_update_resample(pf_t *pf, double landmark_r, double landmark_phi, double landmark_x, double landmark_y,
-                        pf_vector_t leader_mean_, pf_matrix_t leader_cov_)
+                        pf_vector_t leader_mean_, pf_matrix_t leader_cov_, pf_vector_t leader_pose,
+                        pf_vector_t leader_vel)
 {
     int i;
     double total;
@@ -734,7 +735,8 @@ void pf_update_resample(pf_t *pf, double landmark_r, double landmark_phi, double
                             pf->random_pose_data
                             );
                 } else { // When Nested particles exist before this
-                    pf_update_nested_adaptive_resample(pf_sample_b, landmark_r, landmark_phi, sample_b->pose);
+                    pf_update_nested_adaptive_resample(pf_sample_b, landmark_r, landmark_phi, sample_b->pose, leader_pose
+                                                       , leader_vel);
                 }
 
                 sample_counter++;
@@ -848,7 +850,8 @@ void pf_update_resample(pf_t *pf, double landmark_r, double landmark_phi, double
 
 // Resample the nested distribution
 // SINA: NOT USED!!!
-void pf_update_nested_resample(pf_t *pf, double landmark_r, double landmark_phi, pf_vector_t upper_particle_pose)
+void pf_update_nested_resample(pf_t *pf, double landmark_r, double landmark_phi, pf_vector_t upper_particle_pose
+                               , pf_vector_t leader_pose, pf_vector_t leader_vel)
 {
     int i;
     double total;
@@ -917,7 +920,8 @@ void pf_update_nested_resample(pf_t *pf, double landmark_r, double landmark_phi,
                 && drand48() < 0.05){
 
             //KPM ...trying dual sampling instead of random sampling
-            sample_b->pose = nested_dual_fn(pf->random_pose_data, landmark_r, landmark_phi, upper_particle_pose);
+            sample_b->pose = nested_dual_fn(pf->random_pose_data, landmark_r, landmark_phi, upper_particle_pose, leader_pose
+                                            , leader_vel);
 
         }else{
 
@@ -1120,7 +1124,8 @@ void pf_update_nested_resample(pf_t *pf, double landmark_r, double landmark_phi,
 /** Adaptive Resamplers **/
 
 // Resample the nested distribution
-void pf_update_nested_adaptive_resample(pf_t *pf, double landmark_r, double landmark_phi, pf_vector_t upper_particle_pose)
+void pf_update_nested_adaptive_resample(pf_t *pf, double landmark_r, double landmark_phi, pf_vector_t upper_particle_pose,
+                                        pf_vector_t leader_pose, pf_vector_t leader_vel)
 {
     int i;
     double total;
@@ -1204,7 +1209,8 @@ void pf_update_nested_adaptive_resample(pf_t *pf, double landmark_r, double land
 
         if( (pf->isNested != 0) && (landmark_r > 0) && drand48() < 0.05 ){
             //KPM ...trying dual sampling instead of random sampling
-            sample_b->pose = nested_dual_fn(pf->random_pose_data, landmark_r, landmark_phi, upper_particle_pose);
+            sample_b->pose = nested_dual_fn(pf->random_pose_data, landmark_r, landmark_phi, upper_particle_pose, leader_pose
+                                            , leader_vel);
         } else {
             if(drand48() < w_diff){ // Recovery for normal particles
                 sample_b->pose = (pf->random_pose_fn)(pf->random_pose_data);
@@ -1494,7 +1500,8 @@ int pf_get_cluster_stats(pf_t *pf, int clabel, double *weight,
 }
 
 // resampling from the Dual for nested particles
-pf_vector_t nested_dual_fn(void* arg, double landmark_r, double landmark_phi, pf_vector_t upper_particle_pose){
+pf_vector_t nested_dual_fn(void* arg, double landmark_r, double landmark_phi, pf_vector_t upper_particle_pose,
+                           pf_vector_t leader_pose_estimation, pf_vector_t leader_vel){
     int x1, y1;
     double gamma = 0.0;
     pf_vector_t hit, return_pose;
@@ -1510,20 +1517,30 @@ pf_vector_t nested_dual_fn(void* arg, double landmark_r, double landmark_phi, pf
     hit.v[0] = upper_particle_pose.v[0] + obs_range * cos(upper_particle_pose.v[2] + obs_bearing);
     hit.v[1] = upper_particle_pose.v[1] + obs_range * sin(upper_particle_pose.v[2] + obs_bearing);
 
+    double angle_correction = asin(leader_vel.v[1] / sqrt(pow(leader_vel.v[1], 2) + pow(leader_vel.v[0], 2)));
+
     do{
 
         // SINA: The dual samples are aligned with the follower's orientation
         //       with a PI/6 deviation
-        gamma = upper_particle_pose.v[2] + (drand48() * M_PI/3 - M_PI / 6.0);
 
-        return_pose.v[0] = hit.v[0] + pf_ran_gaussian(size_of_turtlebot/2);
-        return_pose.v[1] = hit.v[1] + pf_ran_gaussian(size_of_turtlebot/2);
+        double dice = drand48() * 100;
+        double offset = (drand48() * M_PI / 6) - (M_PI / 12);  // 30 Degree of error applied to the estimated orientation
+        if (dice < 20){
+            gamma = (upper_particle_pose.v[2]) + offset;
+        }else if (dice < 40){
+            gamma = (leader_pose_estimation.v[2]) + offset;
+        }else{
+            gamma = (angle_correction) + offset;
+        }
+
+        return_pose.v[0] = hit.v[0] + pf_ran_gaussian(size_of_turtlebot / 2);
+        return_pose.v[1] = hit.v[1] + pf_ran_gaussian(size_of_turtlebot / 2);
 
         return_pose.v[2] = gamma;
 
         x1 = MAP_GXWX(map, return_pose.v[0]);
         y1 = MAP_GYWY(map, return_pose.v[1]);
-
 
     }while(!MAP_VALID(map,x1,y1));
 

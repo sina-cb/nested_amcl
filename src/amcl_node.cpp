@@ -180,6 +180,9 @@ private:
     double landmark_r_sample;
     double landmark_phi_sample;
 
+    // SINA: Angle correction for the nested particles based on the new velocity estimation
+    double angle_correction;
+
     /* SINA: this vector will hold all of the observations throughout the run
      *
      * We should add observations to this vector and keep updating the HMM whenever
@@ -491,6 +494,8 @@ AmclNode::AmclNode() :
     //SINA: Initialize the learn criteria and collected_samples
     learn_criteria = false;
     collected_sample = 0;
+
+    angle_correction = 0;
 
     other_robot_distance = 0.0;
     isLandmarkObserved = false;
@@ -1793,6 +1798,41 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
             odata.nested_velocity.v[1] = velocity_samples[1].v[1];
             odata.nested_velocity.v[2] = velocity_samples[1].v[2];
 
+            if (hmm.initialized_()){
+                int number_of_forward_samples = 100;
+
+                DETree result_alpha = hmm.forward(&observations, number_of_forward_samples);
+                Sampler sampler;
+
+                Sample sample_vel1;
+                sample_vel1 = sampler.sample(&result_alpha);
+
+                Sample sample_vel2;
+                sample_vel2 = sampler.sample(&result_alpha);
+
+                Sample sample_vel3;
+                sample_vel3 = sampler.sample(&result_alpha);
+
+                sample_vel1.values[0] = (sample_vel1.values[0] + sample_vel2.values[0] + sample_vel3.values[0]) / 3.0;
+                sample_vel1.values[1] = (sample_vel1.values[1] + sample_vel2.values[1] + sample_vel3.values[1]) / 3.0;
+                sample_vel1.values[2] = (sample_vel1.values[2] + sample_vel2.values[2] + sample_vel3.values[2]) / 3.0;
+
+                odata.nested_velocity.v[0] = (sample_vel1.values[0] + odata.nested_velocity.v[0] * 2) / 3.0;
+                odata.nested_velocity.v[1] = (sample_vel1.values[1] + odata.nested_velocity.v[1] * 2) / 3.0;
+                odata.nested_velocity.v[2] = (sample_vel1.values[2] + odata.nested_velocity.v[2] * 2) / 3.0;
+
+                ROS_WARN("Velocity Sample: %f, %f, %f",
+                         sample_vel1.values[0],
+                        sample_vel1.values[1],
+                        sample_vel1.values[2]
+                        );
+
+                // Setting the last velocity sample to the one estimated now!
+//                velocity_samples[1].v[0] = odata.nested_velocity.v[0];
+//                velocity_samples[1].v[1] = odata.nested_velocity.v[1];
+//                velocity_samples[1].v[2] = odata.nested_velocity.v[2];
+            }
+
             propagate_based_on_observation = false;
         }else{
 
@@ -1802,18 +1842,32 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
                 DETree result_alpha = hmm.forward(&observations, number_of_forward_samples);
                 Sampler sampler;
 
-                Sample sample_accl;
-                sample_accl = sampler.sample(&result_alpha);
+                Sample sample_vel1;
+                sample_vel1 = sampler.sample(&result_alpha);
+
+                Sample sample_vel2;
+                sample_vel2 = sampler.sample(&result_alpha);
+
+                Sample sample_vel3;
+                sample_vel3 = sampler.sample(&result_alpha);
+
+                sample_vel1.values[0] = (sample_vel1.values[0] + sample_vel2.values[0] + sample_vel3.values[0]) / 3.0;
+                sample_vel1.values[1] = (sample_vel1.values[1] + sample_vel2.values[1] + sample_vel3.values[1]) / 3.0;
+                sample_vel1.values[2] = (sample_vel1.values[2] + sample_vel2.values[2] + sample_vel3.values[2]) / 3.0;
+
+                odata.nested_velocity.v[0] = (sample_vel1.values[0] + odata.nested_velocity.v[0] * 2) / 3.0;
+                odata.nested_velocity.v[1] = (sample_vel1.values[1] + odata.nested_velocity.v[1] * 2) / 3.0;
+                odata.nested_velocity.v[2] = (sample_vel1.values[2] + odata.nested_velocity.v[2] * 2) / 3.0;
 
                 ROS_WARN("Velocity Sample: %f, %f, %f",
-                         sample_accl.values[0],
-                        sample_accl.values[1],
-                        sample_accl.values[2]
+                         sample_vel1.values[0],
+                        sample_vel1.values[1],
+                        sample_vel1.values[2]
                         );
 
-                odata.nested_velocity.v[0] = sample_accl.values[0];
-                odata.nested_velocity.v[1] = sample_accl.values[1];
-                odata.nested_velocity.v[2] = sample_accl.values[2];
+                odata.nested_velocity.v[0] = sample_vel1.values[0];
+                odata.nested_velocity.v[1] = sample_vel1.values[1];
+                odata.nested_velocity.v[2] = sample_vel1.values[2];
 
                 // Setting the last velocity sample to the one estimated now!
                 velocity_samples[1].v[0] = odata.nested_velocity.v[0];
@@ -1830,9 +1884,9 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
             }
         }
 
-        if (odata.time > 1.2){
-            odata.time = 1.2;
-        }
+//        if (odata.time > 1.2){
+//            odata.time = 1.2;
+//        }
 
         double max_speed_thresh = 0.4;
         double max_speed_w_thresh = 0.3;
@@ -1867,6 +1921,15 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
         if(std::isnan(odata.velocity_angle_diff)){
             odata.velocity_angle_diff = 0.0;
         }
+
+        if (std::abs(odata.velocity_angle_diff) > M_PI / 4){ // Limiting the angle correction to M_PI/4 to
+                                                             //  avoid swirl effect in the nested particles
+            odata.velocity_angle_diff = M_PI / 4;
+            if (odata.velocity_angle_diff < 0)
+                odata.velocity_angle_diff *= -1;
+        }
+
+        this->angle_correction = odata.velocity_angle_diff;
 
         ROS_WARN("Delta Time: %f", odata.time);
 
@@ -1938,7 +2001,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
             true_pose_normal.v[1] = true_pose_service.response.pose.position.y;
             true_pose_normal.v[2] = 0.0;
 
-            ROS_INFO("\n Normal true pose \n\t x: %f \n\t y: %f \n",
+            ROS_DEBUG("\n Normal true pose \n\t x: %f \n\t y: %f \n",
                       true_pose_normal.v[0],
                       true_pose_normal.v[1]);
         }
@@ -1975,7 +2038,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
             true_pose_nested.v[1] = true_pose_service.response.pose.position.y;
             true_pose_nested.v[2] = 0.0;
 
-            ROS_INFO("\n Nested true pose \n\t x: %f \n\t y: %f \n",
+            ROS_DEBUG("\n Nested true pose \n\t x: %f \n\t y: %f \n",
                       true_pose_nested.v[0],
                       true_pose_nested.v[1]);
         }
@@ -2185,7 +2248,8 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
             // landmark_loc_x and y are zero all the time. They are not used in resampling
             pf_update_resample(pf_, landmark_r, landmark_phi, landmark_loc_x, landmark_loc_y,
                                pf_init_leader_pose_mean,
-                               pf_init_leader_pose_cov);
+                               pf_init_leader_pose_cov,
+                               leader_pose_temp, velocity_samples[1]);
             landmark_r = 0;
             landmark_phi = 0;
 

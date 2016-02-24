@@ -345,10 +345,10 @@ bool AMCLOdom::UpdateNestedAction(pf_t *pf, pf_vector_t vel, double correction_a
                 sample->pose.v[2] += delta_rot1_hat + delta_rot2_hat;
                 sample->weight = 1.0 / set->sample_count;
 
-//                sample->pose.v[0] += delta.v[0];
-//                sample->pose.v[1] += delta.v[1];
-//                sample->pose.v[2] += delta.v[2];
-//                sample->weight = 1.0 / set->sample_count;
+                //                sample->pose.v[0] += delta.v[0];
+                //                sample->pose.v[1] += delta.v[1];
+                //                sample->pose.v[2] += delta.v[2];
+                //                sample->weight = 1.0 / set->sample_count;
             }
         }
     } // end for
@@ -368,60 +368,64 @@ bool AMCLOdom::UpdateNestedAction(pf_t *pf, pf_vector_t vel, double correction_a
 
 
 // SINA: This method will propagate the odom
-void AMCLOdom::getNestedParticlePose(pf_vector_t *odom_pose, pf_vector_t *delta, pf_vector_t vel, double correction_angle, double time){
+void AMCLOdom::getNestedParticlePose(pf_vector_t *odom_pose, pf_vector_t *delta, pf_vector_t vel, double correction_angle,
+                                     double time){
     double map_range = map_calc_range(this->map, odom_pose->v[0], odom_pose->v[1], odom_pose->v[2], 10);
     map_cell_t * map_cell = map_get_cell(this->map, odom_pose->v[0], odom_pose->v[1], odom_pose->v[2]);
 
-    double delta_ = sqrt(vel.v[0] * vel.v[0] + vel.v[1] * vel.v[1]) * time;
+    double delta_ = sqrt(vel.v[0] * vel.v[0] + vel.v[1] * vel.v[1]);
+    double correction = std::asin(vel.v[1] / delta_);
+    delta_ *= time;
+
     double delta_phi = vel.v[2] * time;
 
-    if(map_range < std::min(delta_, 0.5) || map_cell->occ_state >= 0){
+    if(map_range < std::min(delta_, 0.1) && map_cell->occ_state == -1){
         double* walls = map_side_walls(this->map, *odom_pose, 3.0);
 
-        if (map_cell->occ_state >= 0){ // If the particle is on the occupied or unknown cells of the map
-            int direction = 0;
-            if (walls[0] < walls[1]){  // The near wall is on the left side
-                direction = -1;
-            }else if (walls[1] < walls[0]){
-                direction = 1;
-            }else{
-                double dice = drand48() * 100;
-                if (dice < 50){
-                    direction = 1;
-                }else{
-                    direction = -1;
-                }
-            }
-
-            double recovery_turn = correction_angle * 2 * direction;
-            delta->v[0] = std::cos(odom_pose->v[2] + recovery_turn) * delta_;
-            delta->v[1] = std::sin(odom_pose->v[2] + recovery_turn) * delta_;
-            delta->v[2] = recovery_turn;
-        }else{ // If the particle is located inside the free space of the map
-            int direction = 0;
-            if (walls[0] < walls[1]){  // The near wall is on the left side
-                direction = 1;
-            }else if (walls[1] < walls[0]){
+        int direction = 0;
+        if (walls[0] < walls[1]){  // The near wall is on the left side
+            direction = 1;
+        }else if (walls[1] < walls[0]){
+            direction = -1;
+        }else{
+            double dice = drand48() * 100;
+            if (dice < 50){
                 direction = -1;
             }else{
-                double dice = drand48() * 100;
-                if (dice < 50){
-                    direction = -1;
-                }else{
-                    direction = 1;
-                }
+                direction = 1;
             }
-
-            double recovery_turn = (M_PI / 6) * -1 * direction;
-            delta->v[0] = std::cos(odom_pose->v[2] + recovery_turn) * delta_;
-            delta->v[1] = std::sin(odom_pose->v[2] + recovery_turn) * delta_;
-            delta->v[2] = recovery_turn;
         }
+
+        double recovery_turn = (M_PI / 6) * -1 * direction;
+        delta->v[0] = std::cos(odom_pose->v[2] + recovery_turn) * delta_;
+        delta->v[1] = std::sin(odom_pose->v[2] + recovery_turn) * delta_;
+        delta->v[2] = recovery_turn;
+    } else if (map_cell->occ_state >= 0){ // If the particle is on the occupied or unknown cells of the map
+        double* walls = map_side_walls(this->map, *odom_pose, 3.0);
+
+        int direction = 0;
+        if (walls[0] < walls[1]){  // The near wall is on the left side
+            direction = -1;
+        }else if (walls[1] < walls[0]){
+            direction = 1;
+        }else{
+            double dice = drand48() * 100;
+            if (dice < 50){
+                direction = 1;
+            }else{
+                direction = -1;
+            }
+        }
+
+        double recovery_turn = correction_angle * 2 * direction;
+        delta->v[0] = std::cos(odom_pose->v[2] + recovery_turn) * delta_;
+        delta->v[1] = std::sin(odom_pose->v[2] + recovery_turn) * delta_;
+        delta->v[2] = recovery_turn;
     } else {
-//        correction_angle /= 2.0;
-        delta->v[0] = std::cos(odom_pose->v[2] + (correction_angle)) * delta_;
-        delta->v[1] = std::sin(odom_pose->v[2] + (correction_angle)) * delta_;
-        delta->v[2] = delta_phi;
+        double offset = (drand48() * M_PI / 3) - (M_PI / 6);
+        delta->v[0] = std::cos(/*odom_pose->v[2] + */correction) * delta_;
+        delta->v[1] = std::sin(/*odom_pose->v[2] + */correction) * delta_;
+        delta->v[2] = correction - odom_pose->v[2] + offset;
     }
 
 }
