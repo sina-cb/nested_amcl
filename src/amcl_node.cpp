@@ -1881,12 +1881,24 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
                 odata.nested_velocity.v[0] = velocity_samples[1].v[0];
                 odata.nested_velocity.v[1] = velocity_samples[1].v[1];
                 odata.nested_velocity.v[2] = velocity_samples[1].v[2];
+
+                if (std::isnan(velocity_samples[1].v[0])){
+                    odata.nested_velocity.v[0] = 0.0;
+                }
+
+                if (std::isnan(velocity_samples[1].v[1])){
+                    odata.nested_velocity.v[1] = 0.0;
+                }
+
+                if (std::isnan(velocity_samples[1].v[2])){
+                    odata.nested_velocity.v[2] = 0.0;
+                }
             }
         }
 
-//        if (odata.time > 1.2){
-//            odata.time = 1.2;
-//        }
+        if (odata.time > 1.0){
+            odata.time = 1.0;
+        }
 
         double max_speed_thresh = 0.4;
         double max_speed_w_thresh = 0.3;
