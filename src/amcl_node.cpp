@@ -2900,7 +2900,7 @@ AmclNode::log_data(geometry_msgs::PoseWithCovarianceStamped pose_bestEstimate){
     struct timeval tp;
     gettimeofday(&tp, NULL);
     long int current_timestamp = tp.tv_sec * 1000 + tp.tv_usec / 1000; //get current timestamp in milliseconds
-    double elapsed_time = (current_timestamp - start_timestamp) * 1.0e-9; //in Sec
+    double elapsed_time = (current_timestamp - start_timestamp) * 1.0e-3; //in Sec
 
     double difference_in_true_and_estimate_normal = sqrt( (pose_bestEstimate.pose.pose.position.x- true_pose_normal.v[0])
             *(pose_bestEstimate.pose.pose.position.x- true_pose_normal.v[0])
