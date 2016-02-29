@@ -69,6 +69,8 @@ pf_vector_t pf_vector_coord_add(pf_vector_t a, pf_vector_t b);
 // Transform from global to local coords (a - b)
 pf_vector_t pf_vector_coord_sub(pf_vector_t a, pf_vector_t b);
 
+// Get the angle from a vector based on x and y components
+double pf_vector_angle(pf_vector_t vec);
 
 // Return a zero matrix
 pf_matrix_t pf_matrix_zero();

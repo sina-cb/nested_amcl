@@ -79,7 +79,7 @@
 #include <fstream>
 #include <iostream>
 
-#define COLLECT_DATA 0
+#define COLLECT_DATA 1
 
 #define NEW_UNIFORM_SAMPLING 1
 
@@ -152,9 +152,11 @@ public:
     std::string obs_file_path;
     std::string m_file_path;
     std::string v_file_path;
+    std::string results_file_path;
     std::ofstream obs_out;
     std::ofstream m_out;
     std::ofstream v_out;
+    std::ofstream results_out;
 
 private:
     /* KPM */
@@ -452,34 +454,6 @@ AmclNode::AmclNode() :
 {
     boost::recursive_mutex::scoped_lock l(configuration_mutex_);
 
-    // SINA: Initialize the file paths for HMM data collection
-    obs_file_path = "/home/sina/Desktop/obs.txt";
-    m_file_path = "/home/sina/Desktop/m.txt";
-    v_file_path = "/home/sina/Desktop/v.txt";
-
-    obs_out.open(obs_file_path, ios::out);
-    m_out.open(m_file_path, ios::out);
-    v_out.open(v_file_path, ios::out);
-
-    // Write the headers to the collected data file
-    {
-        obs_out << "CrossWALK" << "\t" << "TurnPOINT" << "\t"
-                << "Junction" << "\t" << "WallLeft" << "\t"
-                << "WallRight" << std::endl;
-
-        m_out << "OldVel_X" << "\t" << "OldVel_Y" << "\t"
-              << "NewVel_X" << "\t" << "NewVel_Y" << std::endl;
-
-        v_out << "CrossWALK" << "\t" << "TurnPOINT" << "\t"
-              << "Junction" << "\t" << "WallLeft" << "\t"
-              << "WallRight" << "\t" << "NewVel_X" << "\t"
-              << "NewVel_Y" << std::endl;
-
-        obs_out.flush();
-        m_out.flush();
-        v_out.flush();
-    }
-
     // SINA: Use this to decide whether we should use the HMM or pure observation to estimate the motion
     propagate_based_on_observation = false;
 
@@ -557,7 +531,7 @@ AmclNode::AmclNode() :
     std::string home_path = std::string(getenv("HOME"));
 
 
-    algo_name = "ANPF-AW";
+    algo_name = "LMCHMM";
     std::string file_name;
 
     private_nh_.param("robot_start_config_id", robot_start_config_id, std::string("DefaultConfig") );
@@ -593,44 +567,77 @@ AmclNode::AmclNode() :
     filename_abs = home_path + file_path_from_home + "/" + file_name + ".txt";
 
 
-    headers << "algo_name" << ","
-            << "robot_start_config_id" << ","
-            << "trajectory_id" << ","
-            << "run_number" << ","
-            << "start_timestamp" << ","
-            << "max_particles" << ","
-            << "max_nested_particles" << ","
-            << "elapsed_time" << ","
-            << "current normal particle count" << ","
+    headers << "algo_name" << "\t"
+            //<< "robot_start_config_id" << "\t"
+            //<< "trajectory_id" << "\t"
+            << "run_number" << "\t"
+            << "start_timestamp" << "\t"
+            //<< "max_particles" << "\t"
+            //<< "max_nested_particles" << "\t"
+            << "elapsed_time" << "\t"
+            << "current normal particle count" << "\t"
 
-            << "True Pose" << ","
-            << "Estimated Pose" << ","
-            << "distance betwn true and estimate" << ","
-            << "Particle MSE" << ","
-            << "Particle RMS Error" << ","
-            << "Normal particles within 1m of true pose" << ","
+            //<< "True Pose" << "\t"
+            //<< "Estimated Pose" << "\t"
+            //<< "distance betwn true and estimate" << "\t"
+            //<< "Particle MSE" << "\t"
+            //<< "Particle RMS Error" << "\t"
+            //<< "Normal particles within 1m of true pose" << "\t"
 
-            << "Occlusion proportion (0.0-1.0)" << ","
+            //<< "Occlusion proportion (0.0-1.0)" << "\t"
 
-            << "True Nested Pose" << ","
-               //                                 << "Estimated Nested Pose" << ","
-               //                                 << "Distance between nested true and nested estimate" << ","
-            << "Nested Particle MSE" << ","
-            << "Nested Particle RMS Error" << ","
-            << "Nested particles within 1m of true nested pose" << ","
+            //<< "True Nested Pose" << "\t"
+            //<< "Estimated Nested Pose" << "\t"
+            //<< "Distance between nested true and nested estimate" << "\t"
+            << "Nested Particle MSE" << "\t"
+            << "Nested Particle RMS Error" << "\t"
+            << "Nested particles within 1m of true nested pose" << "\t"
 
-            << "avg weight"<< ","
-            << "cov.m[0][0]" << ","
-            << "cov.m[1][1]" << ","
-            << "cov.m[2][2]" << ","
-            << "covariance sum" << ","
-            << "other robot observed" << ","
-            << "other robot distance" << ","
-            << "current nested_particle count" << ","
+            //<< "avg weight"<< "\t"
+            //<< "cov.m[0][0]" << "\t"
+            //<< "cov.m[1][1]" << "\t"
+            //<< "cov.m[2][2]" << "\t"
+            //<< "covariance sum" << "\t"
+            << "other robot observed" << "\t"
+            << "other robot distance" << "\t"
+            << "current nested_particle count" << "\t"
             << "total_nested_particle_count";
 
 
     /* **** End of Data collection related stuff **** */
+
+    // SINA: Initialize the file paths for HMM data collection
+    obs_file_path = home_path + "/Desktop/obs.txt";
+    m_file_path = home_path + "/Desktop/m.txt";
+    v_file_path = home_path + "/Desktop/v.txt";
+    results_file_path = home_path + "/indigo_workspace/dump_files/" + file_name.c_str();
+
+    obs_out.open(obs_file_path, ios::out);
+    m_out.open(m_file_path, ios::out);
+    v_out.open(v_file_path, ios::out);
+    results_out.open(results_file_path, ios::out);
+
+    // Write the headers to the collected data file
+    {
+        obs_out << "CrossWALK" << "\t" << "TurnPOINT" << "\t"
+                << "Junction" << "\t" << "WallLeft" << "\t"
+                << "WallRight" << std::endl;
+
+        m_out << "OldVel_X" << "\t" << "OldVel_Y" << "\t"
+              << "NewVel_X" << "\t" << "NewVel_Y" << std::endl;
+
+        v_out << "CrossWALK" << "\t" << "TurnPOINT" << "\t"
+              << "Junction" << "\t" << "WallLeft" << "\t"
+              << "WallRight" << "\t" << "NewVel_X" << "\t"
+              << "NewVel_Y" << std::endl;
+
+        results_out << headers.str() << std::endl;
+
+        obs_out.flush();
+        m_out.flush();
+        v_out.flush();
+        results_out.flush();
+    }
 
 #endif
 
@@ -1495,7 +1502,7 @@ AmclNode::uniformPoseGenerator(void* arg)
 }
 
 pf_vector_t AmclNode::  dualMCL_PoseGenerator(void* arg, double landmark_r, double landmark_phi, double landmark_x_param,
-                                double landmark_y_param){
+                                              double landmark_y_param){
     pf_vector_t newPose;
 
     map_t* map = (map_t*) arg;
@@ -1798,7 +1805,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
             odata.nested_velocity.v[1] = velocity_samples[1].v[1];
             odata.nested_velocity.v[2] = velocity_samples[1].v[2];
 
-            if (hmm.initialized_()){
+            if (false && hmm.initialized_()){
                 int number_of_forward_samples = 100;
 
                 DETree result_alpha = hmm.forward(&observations, number_of_forward_samples);
@@ -1813,9 +1820,18 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
                 Sample sample_vel3;
                 sample_vel3 = sampler.sample(&result_alpha);
 
-                sample_vel1.values[0] = (sample_vel1.values[0] + sample_vel2.values[0] + sample_vel3.values[0]) / 3.0;
-                sample_vel1.values[1] = (sample_vel1.values[1] + sample_vel2.values[1] + sample_vel3.values[1]) / 3.0;
-                sample_vel1.values[2] = (sample_vel1.values[2] + sample_vel2.values[2] + sample_vel3.values[2]) / 3.0;
+                Sample sample_vel4;
+                sample_vel4 = sampler.sample(&result_alpha);
+
+                Sample sample_vel5;
+                sample_vel5 = sampler.sample(&result_alpha);
+
+                sample_vel1.values[0] = (sample_vel1.values[0] + sample_vel2.values[0] + sample_vel3.values[0]
+                        + sample_vel4.values[0] + sample_vel5.values[0]) / 5.0;
+                sample_vel1.values[1] = (sample_vel1.values[1] + sample_vel2.values[1] + sample_vel3.values[1]
+                        + sample_vel4.values[1] + sample_vel5.values[1]) / 5.0;
+                sample_vel1.values[2] = (sample_vel1.values[2] + sample_vel2.values[2] + sample_vel3.values[2]
+                        + sample_vel4.values[2] + sample_vel5.values[2]) / 5.0;
 
                 odata.nested_velocity.v[0] = (sample_vel1.values[0] + odata.nested_velocity.v[0] * 2) / 3.0;
                 odata.nested_velocity.v[1] = (sample_vel1.values[1] + odata.nested_velocity.v[1] * 2) / 3.0;
@@ -1828,9 +1844,9 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
                         );
 
                 // Setting the last velocity sample to the one estimated now!
-//                velocity_samples[1].v[0] = odata.nested_velocity.v[0];
-//                velocity_samples[1].v[1] = odata.nested_velocity.v[1];
-//                velocity_samples[1].v[2] = odata.nested_velocity.v[2];
+                //                velocity_samples[1].v[0] = odata.nested_velocity.v[0];
+                //                velocity_samples[1].v[1] = odata.nested_velocity.v[1];
+                //                velocity_samples[1].v[2] = odata.nested_velocity.v[2];
             }
 
             propagate_based_on_observation = false;
@@ -1851,13 +1867,22 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
                 Sample sample_vel3;
                 sample_vel3 = sampler.sample(&result_alpha);
 
-                sample_vel1.values[0] = (sample_vel1.values[0] + sample_vel2.values[0] + sample_vel3.values[0]) / 3.0;
-                sample_vel1.values[1] = (sample_vel1.values[1] + sample_vel2.values[1] + sample_vel3.values[1]) / 3.0;
-                sample_vel1.values[2] = (sample_vel1.values[2] + sample_vel2.values[2] + sample_vel3.values[2]) / 3.0;
+                Sample sample_vel4;
+                sample_vel4 = sampler.sample(&result_alpha);
 
-                odata.nested_velocity.v[0] = (sample_vel1.values[0] + odata.nested_velocity.v[0] * 2) / 3.0;
-                odata.nested_velocity.v[1] = (sample_vel1.values[1] + odata.nested_velocity.v[1] * 2) / 3.0;
-                odata.nested_velocity.v[2] = (sample_vel1.values[2] + odata.nested_velocity.v[2] * 2) / 3.0;
+                Sample sample_vel5;
+                sample_vel5 = sampler.sample(&result_alpha);
+
+                sample_vel1.values[0] = (sample_vel1.values[0] + sample_vel2.values[0] + sample_vel3.values[0]
+                        + sample_vel4.values[0] + sample_vel5.values[0]) / 5.0;
+                sample_vel1.values[1] = (sample_vel1.values[1] + sample_vel2.values[1] + sample_vel3.values[1]
+                        + sample_vel4.values[1] + sample_vel5.values[1]) / 5.0;
+                sample_vel1.values[2] = (sample_vel1.values[2] + sample_vel2.values[2] + sample_vel3.values[2]
+                        + sample_vel4.values[2] + sample_vel5.values[2]) / 5.0;
+
+                odata.nested_velocity.v[0] = (sample_vel1.values[0] + velocity_samples[1].v[0] * 2) / 3.0;
+                odata.nested_velocity.v[1] = (sample_vel1.values[1] + velocity_samples[1].v[1] * 2) / 3.0;
+                odata.nested_velocity.v[2] = (sample_vel1.values[2] + velocity_samples[1].v[2] * 2) / 3.0;
 
                 ROS_WARN("Velocity Sample: %f, %f, %f",
                          sample_vel1.values[0],
@@ -1923,11 +1948,8 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
             odata.nested_velocity.v[2] = 0.0;
         }
 
-        double old_vel_angle = std::asin(velocity_samples[0].v[1] / sqrt(std::pow(velocity_samples[0].v[1], 2) +
-                std::pow(velocity_samples[0].v[0], 2)));
-
-        double new_vel_angle = std::asin(velocity_samples[1].v[1] / sqrt(std::pow(velocity_samples[1].v[1], 2) +
-                std::pow(velocity_samples[1].v[0], 2)));
+        double old_vel_angle = pf_vector_angle(velocity_samples[0]);
+        double new_vel_angle = pf_vector_angle(velocity_samples[1]);
 
         odata.velocity_angle_diff = (old_vel_angle - new_vel_angle);
         if(std::isnan(odata.velocity_angle_diff)){
@@ -1935,7 +1957,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
         }
 
         if (std::abs(odata.velocity_angle_diff) > M_PI / 4){ // Limiting the angle correction to M_PI/4 to
-                                                             //  avoid swirl effect in the nested particles
+            //  avoid swirl effect in the nested particles
             odata.velocity_angle_diff = M_PI / 4;
             if (odata.velocity_angle_diff < 0)
                 odata.velocity_angle_diff *= -1;
@@ -1988,26 +2010,26 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
 
         true_pose_service.request.model_name = std::string("Robot1");
         if (true_pose_client.call(true_pose_service))
-        {            
-//            tf::Vector3 origin_map(0, 0, 0);
-//            tf::Quaternion quaternion_map(0, 0, -.15);
+        {
+            //            tf::Vector3 origin_map(0, 0, 0);
+            //            tf::Quaternion quaternion_map(0, 0, -.15);
 
-//            tf::Transform map_rotation;
-//            map_rotation.setOrigin(origin_map);
-//            map_rotation.setRotation(quaternion_map);
+            //            tf::Transform map_rotation;
+            //            map_rotation.setOrigin(origin_map);
+            //            map_rotation.setRotation(quaternion_map);
 
-//            tf::Vector3 origin_pose(true_pose_service.response.pose.position.x, true_pose_service.response.pose.position.y, 0);
-//            tf::Quaternion quaternion_pose(0, 0, 0);
+            //            tf::Vector3 origin_pose(true_pose_service.response.pose.position.x, true_pose_service.response.pose.position.y, 0);
+            //            tf::Quaternion quaternion_pose(0, 0, 0);
 
-//            tf::Transform pose_tansform;
-//            pose_tansform.setOrigin(origin_pose);
-//            pose_tansform.setRotation(quaternion_pose);
+            //            tf::Transform pose_tansform;
+            //            pose_tansform.setOrigin(origin_pose);
+            //            pose_tansform.setRotation(quaternion_pose);
 
-//            tf::Transform result = pose_tansform * map_rotation;
+            //            tf::Transform result = pose_tansform * map_rotation;
 
-//            true_pose_normal.v[0] = result.getOrigin().x();
-//            true_pose_normal.v[1] = result.getOrigin().y();
-//            true_pose_normal.v[2] = 0.0;
+            //            true_pose_normal.v[0] = result.getOrigin().x();
+            //            true_pose_normal.v[1] = result.getOrigin().y();
+            //            true_pose_normal.v[2] = 0.0;
 
             true_pose_normal.v[0] = true_pose_service.response.pose.position.x;
             true_pose_normal.v[1] = true_pose_service.response.pose.position.y;
@@ -2015,7 +2037,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
 
             ROS_DEBUG("\n Normal true pose \n\t x: %f \n\t y: %f \n",
                       true_pose_normal.v[0],
-                      true_pose_normal.v[1]);
+                    true_pose_normal.v[1]);
         }
         else
         {
@@ -2026,25 +2048,25 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
         true_pose_service.request.model_name = std::string("Robot2");
         if (true_pose_client.call(true_pose_service))
         {
-//            tf::Vector3 origin_map(0, 0, 0);
-//            tf::Quaternion quaternion_map(0, 0, -.15);
+            //            tf::Vector3 origin_map(0, 0, 0);
+            //            tf::Quaternion quaternion_map(0, 0, -.15);
 
-//            tf::Transform map_rotation;
-//            map_rotation.setOrigin(origin_map);
-//            map_rotation.setRotation(quaternion_map);
+            //            tf::Transform map_rotation;
+            //            map_rotation.setOrigin(origin_map);
+            //            map_rotation.setRotation(quaternion_map);
 
-//            tf::Vector3 origin_pose(true_pose_service.response.pose.position.x, true_pose_service.response.pose.position.y, 0);
-//            tf::Quaternion quaternion_pose(0, 0, 0);
+            //            tf::Vector3 origin_pose(true_pose_service.response.pose.position.x, true_pose_service.response.pose.position.y, 0);
+            //            tf::Quaternion quaternion_pose(0, 0, 0);
 
-//            tf::Transform pose_tansform;
-//            pose_tansform.setOrigin(origin_pose);
-//            pose_tansform.setRotation(quaternion_pose);
+            //            tf::Transform pose_tansform;
+            //            pose_tansform.setOrigin(origin_pose);
+            //            pose_tansform.setRotation(quaternion_pose);
 
-//            tf::Transform result = pose_tansform * map_rotation;
+            //            tf::Transform result = pose_tansform * map_rotation;
 
-//            true_pose_nested.v[0] = result.getOrigin().x();
-//            true_pose_nested.v[1] = result.getOrigin().y();
-//            true_pose_nested.v[2] = 0.0;
+            //            true_pose_nested.v[0] = result.getOrigin().x();
+            //            true_pose_nested.v[1] = result.getOrigin().y();
+            //            true_pose_nested.v[2] = 0.0;
 
             true_pose_nested.v[0] = true_pose_service.response.pose.position.x;
             true_pose_nested.v[1] = true_pose_service.response.pose.position.y;
@@ -2052,7 +2074,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
 
             ROS_DEBUG("\n Nested true pose \n\t x: %f \n\t y: %f \n",
                       true_pose_nested.v[0],
-                      true_pose_nested.v[1]);
+                    true_pose_nested.v[1]);
         }
         else
         {
@@ -2878,7 +2900,7 @@ AmclNode::log_data(geometry_msgs::PoseWithCovarianceStamped pose_bestEstimate){
     struct timeval tp;
     gettimeofday(&tp, NULL);
     long int current_timestamp = tp.tv_sec * 1000 + tp.tv_usec / 1000; //get current timestamp in milliseconds
-    long int elapsed_time = current_timestamp - start_timestamp;
+    double elapsed_time = (current_timestamp - start_timestamp) * 1.0e-9; //in Sec
 
     double difference_in_true_and_estimate_normal = sqrt( (pose_bestEstimate.pose.pose.position.x- true_pose_normal.v[0])
             *(pose_bestEstimate.pose.pose.position.x- true_pose_normal.v[0])
@@ -2899,44 +2921,45 @@ AmclNode::log_data(geometry_msgs::PoseWithCovarianceStamped pose_bestEstimate){
     data_fname_pub_.publish(filename_msg);
     data_headers_pub_.publish(headers_msg);
 
-    data_stream << algo_name << ","
-                << robot_start_config_id << ","
-                << trajectory_id << ","
-                << run_number << ","
-                << start_timestamp << ","
-                << max_particles_ << ","
-                << max_nested_particles_ << ","
-                << elapsed_time << ","
-                << pf_->sets[pf_->current_set].sample_count << ","
+    data_stream << algo_name << "\t"
+                //<< robot_start_config_id << "\t"
+                //<< trajectory_id << "\t"
+                << run_number << "\t"
+                << start_timestamp << "\t"
+                //<< max_particles_ << "\t"
+                //<< max_nested_particles_ << "\t"
+                << elapsed_time << "\t"
+                << pf_->sets[pf_->current_set].sample_count << "\t"
 
-                << "[" << true_pose_normal.v[0] << " : " << true_pose_normal.v[1] << " : " << true_pose_normal.v[2] << "],"
-                << "[" << pose_bestEstimate.pose.pose.position.x << " : " << pose_bestEstimate.pose.pose.position.y << " : " << "0.0" << "],"
-                << difference_in_true_and_estimate_normal << ","
-                << normal_MSE << ","
-                << normal_RootMSE << ","
-                << normal_particles_within_1m << ","
+                //<< "[" << true_pose_normal.v[0] << " : " << true_pose_normal.v[1] << " : " << true_pose_normal.v[2] << "]\t"
+                //<< "[" << pose_bestEstimate.pose.pose.position.x << " : " << pose_bestEstimate.pose.pose.position.y << " : " << "0.0" << "]\t"
+                //<< difference_in_true_and_estimate_normal << "\t"
+                //<< normal_MSE << "\t"
+                //<< normal_RootMSE << "\t"
+                //<< normal_particles_within_1m << "\t"
 
-                << occlusion_proportion << ","
+                //<< occlusion_proportion << "\t"
 
-                << "[" << true_pose_nested.v[0] << " : " << true_pose_nested.v[1] << " : " << true_pose_nested.v[2] << "],"
-                << nested_MSE << ","
-                << nested_RootMSE << ","
-                << nested_particles_within_1m << ","
+                //<< "[" << true_pose_nested.v[0] << " : " << true_pose_nested.v[1] << " : " << true_pose_nested.v[2] << "]\t"
+                << nested_MSE << "\t"
+                << nested_RootMSE << "\t"
+                << nested_particles_within_1m << "\t"
 
-                << pf_->sets[pf_->current_set].avg_weight << ","
-                << pf_->sets[pf_->current_set].cov.m[0][0] << ","
-                                                           << pf_->sets[pf_->current_set].cov.m[1][1] << ","
-                                                                                                      << pf_->sets[pf_->current_set].cov.m[2][2] << ","
-                                                                                                                                                 << pf_->sets[pf_->current_set].cov.m[0][0]
-            + pf_->sets[pf_->current_set].cov.m[1][1]
-            + pf_->sets[pf_->current_set].cov.m[2][2] << ","
-                                                      << (isLandmarkObserved ? 1 : 0 ) << ","
-                                                      << other_robot_distance << ","
-                                                      << nested_particle_count << ","
-                                                      << total_nested_particle_count;
+                //<< pf_->sets[pf_->current_set].avg_weight << "\t"
+                //<< pf_->sets[pf_->current_set].cov.m[0][0] << "\t"
+                //<< pf_->sets[pf_->current_set].cov.m[1][1] << "\t"
+                //<< pf_->sets[pf_->current_set].cov.m[2][2] << "\t"
+                //<< pf_->sets[pf_->current_set].cov.m[0][0] + pf_->sets[pf_->current_set].cov.m[1][1] + pf_->sets[pf_->current_set].cov.m[2][2] << "\t"
+                << (isLandmarkObserved ? 1 : 0 ) << "\t"
+                << other_robot_distance << "\t"
+                << nested_particle_count << "\t"
+                << total_nested_particle_count;
 
 
     data_msg.data = data_stream.str();
+
+    results_out << data_stream.str() << std::endl;
+    results_out.flush();
 
     ROS_DEBUG("nested_amcl sent: ## %s ##", data_msg.data.c_str());
     npf_data_pub_.publish(data_msg);

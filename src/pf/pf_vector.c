@@ -216,6 +216,18 @@ pf_matrix_t pf_matrix_inverse(pf_matrix_t a, double *det)
 }
 */
 
+// Get the angle from a vector based on x and y components
+double pf_vector_angle(pf_vector_t vec){
+
+    double angle = asin(vec.v[1] / sqrt(pow(vec.v[1], 2) + pow(vec.v[0], 2)));
+    if (vec.v[0] < 0 && vec.v[1] >= 0){
+        angle = M_PI - angle;
+    } else if (vec.v[0] < 0 && vec.v[1] < 0){
+        angle = -M_PI - angle;
+    }
+
+    return angle;
+}
 
 // Decompose a covariance matrix [a] into a rotation matrix [r] and a diagonal
 // matrix [d] such that a = r d r^T.
