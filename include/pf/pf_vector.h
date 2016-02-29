@@ -72,6 +72,9 @@ pf_vector_t pf_vector_coord_sub(pf_vector_t a, pf_vector_t b);
 // Get the angle from a vector based on x and y components
 double pf_vector_angle(pf_vector_t vec);
 
+// Rotate a vector by a certain amount of Radians
+pf_vector_t pf_vector_rotate(pf_vector_t vec, double angle);
+
 // Return a zero matrix
 pf_matrix_t pf_matrix_zero();
 

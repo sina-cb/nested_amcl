@@ -377,59 +377,53 @@ void AMCLOdom::getNestedParticlePose(pf_vector_t *odom_pose, pf_vector_t *delta,
     double correction = pf_vector_angle(vel);
 
     delta_ *= time;
+    if(map_range < std::min(delta_, 0.2) && map_cell->occ_state == -1){
+        double* walls = map_side_walls(this->map, *odom_pose, 3.0);
 
-//    printf("Vel[0] %f  Vel[1] %f  Vel[2] %f\n", vel.v[0], vel.v[1], vel.v[2]);
-//    printf("Correction %f\n", correction);
+        int direction = 0;
+        if (walls[0] < walls[1]){  // The near wall is on the left side
+            direction = 1;
+        }else if (walls[1] < walls[0]){
+            direction = -1;
+        }else{
+            double dice = drand48() * 100;
+            if (dice < 50){
+                direction = -1;
+            }else{
+                direction = 1;
+            }
+        }
 
-    double delta_phi = vel.v[2] * time;
+        double recovery_turn = (M_PI / 6) * -1 * direction;
+        delta->v[0] = std::cos(odom_pose->v[2] + recovery_turn) * delta_;
+        delta->v[1] = std::sin(odom_pose->v[2] + recovery_turn) * delta_;
+        delta->v[2] = recovery_turn;
+    } else if (map_cell->occ_state >= 0){ // If the particle is on the occupied or unknown cells of the map
+        double* walls = map_side_walls(this->map, *odom_pose, 3.0);
 
-//    if(map_range < std::min(delta_, 0.1) && map_cell->occ_state == -1){
-//        double* walls = map_side_walls(this->map, *odom_pose, 3.0);
+        int direction = 0;
+        if (walls[0] < walls[1]){  // The near wall is on the left side
+            direction = -1;
+        }else if (walls[1] < walls[0]){
+            direction = 1;
+        }else{
+            double dice = drand48() * 100;
+            if (dice < 50){
+                direction = 1;
+            }else{
+                direction = -1;
+            }
+        }
 
-//        int direction = 0;
-//        if (walls[0] < walls[1]){  // The near wall is on the left side
-//            direction = 1;
-//        }else if (walls[1] < walls[0]){
-//            direction = -1;
-//        }else{
-//            double dice = drand48() * 100;
-//            if (dice < 50){
-//                direction = -1;
-//            }else{
-//                direction = 1;
-//            }
-//        }
-
-//        double recovery_turn = (M_PI / 6) * -1 * direction;
-//        delta->v[0] = std::cos(odom_pose->v[2] + recovery_turn) * delta_;
-//        delta->v[1] = std::sin(odom_pose->v[2] + recovery_turn) * delta_;
-//        delta->v[2] = recovery_turn;
-//    } else if (map_cell->occ_state >= 0){ // If the particle is on the occupied or unknown cells of the map
-//        double* walls = map_side_walls(this->map, *odom_pose, 3.0);
-
-//        int direction = 0;
-//        if (walls[0] < walls[1]){  // The near wall is on the left side
-//            direction = -1;
-//        }else if (walls[1] < walls[0]){
-//            direction = 1;
-//        }else{
-//            double dice = drand48() * 100;
-//            if (dice < 50){
-//                direction = 1;
-//            }else{
-//                direction = -1;
-//            }
-//        }
-
-//        double recovery_turn = correction_angle * 2 * direction;
-//        delta->v[0] = std::cos(odom_pose->v[2] + recovery_turn) * delta_;
-//        delta->v[1] = std::sin(odom_pose->v[2] + recovery_turn) * delta_;
-//        delta->v[2] = recovery_turn;
-//    } else {
+        double recovery_turn = correction_angle * 2 * direction;
+        delta->v[0] = std::cos(odom_pose->v[2] + recovery_turn) * delta_;
+        delta->v[1] = std::sin(odom_pose->v[2] + recovery_turn) * delta_;
+        delta->v[2] = recovery_turn;
+    } else {
         double offset = (drand48() * M_PI / 3) - (M_PI / 6);
         delta->v[0] = std::cos(/*odom_pose->v[2] + */correction) * delta_;
         delta->v[1] = std::sin(/*odom_pose->v[2] + */correction) * delta_;
         delta->v[2] = correction - odom_pose->v[2] + offset;
-//    }
+    }
 
 }
