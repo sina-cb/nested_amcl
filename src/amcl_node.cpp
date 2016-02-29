@@ -1131,12 +1131,12 @@ void AmclNode::collect_sample(geometry_msgs::PoseWithCovarianceStamped *our_pose
         collected_sample++;
         ROS_WARN("Collected samples: %d", collected_sample);
 
-        if (collected_sample >= 10){
-            collected_sample = 0;
-            learn_criteria = true;
+//        if (collected_sample >= 10){
+//            collected_sample = 0;
+//            learn_criteria = true;
 
-            ROS_WARN("Let's learn something!");
-        }
+//            ROS_WARN("Let's learn something!");
+//        }
     }
 
 }
@@ -2575,7 +2575,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
             this->tfb_->sendTransform(nested_tmp_tf_stamped);
         }
 
-        //collect_sample(&last_published_pose, &nested_last_published_pose, landmark_r_sample, landmark_phi_sample, nested_MSE);
+        collect_sample(&last_published_pose, &nested_last_published_pose, landmark_r_sample, landmark_phi_sample, nested_MSE);
 
     }
     else if(latest_tf_valid_)
