@@ -371,7 +371,6 @@ bool AMCLOdom::UpdateNestedAction(pf_t *pf, pf_vector_t vel, double correction_a
 void AMCLOdom::getNestedParticlePose(pf_vector_t *odom_pose, pf_vector_t *delta, pf_vector_t vel, double correction_angle,
                                      double time){
     double dice = drand48() * 100;
-    double nested_delta_trans = 0.0;
 
     double map_range = map_calc_range(this->map, odom_pose->v[0], odom_pose->v[1], odom_pose->v[2], 10);
 
