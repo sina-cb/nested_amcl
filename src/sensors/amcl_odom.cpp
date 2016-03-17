@@ -68,7 +68,7 @@ AMCLOdom::AMCLOdom() : AMCLSensor()
 }
 
 // Constructor with map parameter (Created by KPM for NPF)
-AMCLOdom::AMCLOdom(map_t *map, MCFHMM * hmm) : AMCLSensor()
+AMCLOdom::AMCLOdom(map_t *map, MCHMM * hmm) : AMCLSensor()
 {
     this->time = 0.0;
     this->map = map;

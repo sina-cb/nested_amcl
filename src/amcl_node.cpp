@@ -71,7 +71,8 @@
 #include "cmvision/Blob.h"
 
 // SINA: Header files needed for the Monte Carlo HMM
-#include "MCFHMM.h"
+#include "MCHMM.h"
+#include "LMCHMM.h"
 #include "Sampler.h"
 
 #include "gazebo_msgs/GetModelState.h"
@@ -176,7 +177,7 @@ private:
     double occlusion_proportion;
 
     /* SINA: this object will be used to train and reason from the hmm */
-    MCFHMM hmm;
+    MCHMM hmm;
 
     // SINA: These two variables will be used to find out when to learn the HMM
     bool learn_criteria;
@@ -637,18 +638,18 @@ AmclNode::AmclNode() :
                 << "WallRight" << std::endl;
 
         m_1_out << "OldVel_X" << "\t" << "OldVel_Y" << "\t"
-              << "NewVel_X" << "\t" << "NewVel_Y" << std::endl;
+                << "NewVel_X" << "\t" << "NewVel_Y" << std::endl;
 
         v_1_out << "CrossWALK" << "\t" << "TurnPOINT" << "\t"
-              << "Junction" << "\t" << "WallLeft" << "\t"
-              << "WallRight" << "\t" << "NewVel_X" << "\t"
-              << "NewVel_Y" << std::endl;
+                << "Junction" << "\t" << "WallLeft" << "\t"
+                << "WallRight" << "\t" << "NewVel_X" << "\t"
+                << "NewVel_Y" << std::endl;
 
         m_2_out << "OldAcc_X" << "\t" << "OldAcc_Y" << "\t"
-              << "NewAcc_X" << "\t" << "NewAcc_Y" << std::endl;
+                << "NewAcc_X" << "\t" << "NewAcc_Y" << std::endl;
 
         v_2_out << "NewVel_X" << "\t" << "NewVel_y" << "\t"
-              << "NewAcc_X" << "\t" << "NewAcc_Y" << std::endl;
+                << "NewAcc_X" << "\t" << "NewAcc_Y" << std::endl;
 
         results_out << headers.str() << std::endl;
 
@@ -1111,9 +1112,9 @@ void AmclNode::collect_sample(geometry_msgs::PoseWithCovarianceStamped *our_pose
         m_1.push_back(sample_m_1);
 
         m_1_out << std::setprecision(3)
-              << sample_m_1.values[0] << "\t" << sample_m_1.values[1] << "\t"
-              << sample_m_1.values[2] << "\t" << sample_m_1.values[3] << "\t"
-              << std::endl;
+                << sample_m_1.values[0] << "\t" << sample_m_1.values[1] << "\t"
+                << sample_m_1.values[2] << "\t" << sample_m_1.values[3] << "\t"
+                << std::endl;
         m_1_out.flush();
 
         ROS_DEBUG("M_1 Sample: %f, %f, %f, %f",
@@ -1134,10 +1135,10 @@ void AmclNode::collect_sample(geometry_msgs::PoseWithCovarianceStamped *our_pose
         v_1.push_back(sample_v_1);
 
         v_1_out << std::setprecision(3)
-              << sample_v_1.values[0] << "\t" << sample_v_1.values[1] << "\t"
-              << sample_v_1.values[2] << "\t" << sample_v_1.values[3] << "\t"
-              << sample_v_1.values[4] << "\t" << sample_v_1.values[5] << "\t"
-              << std::endl;
+                << sample_v_1.values[0] << "\t" << sample_v_1.values[1] << "\t"
+                << sample_v_1.values[2] << "\t" << sample_v_1.values[3] << "\t"
+                << sample_v_1.values[4] << "\t" << sample_v_1.values[5] << "\t"
+                << std::endl;
         v_1_out.flush();
 
         ROS_DEBUG("V_1 Sample: %f, %f, %f, %f, %f, %f",
@@ -1158,9 +1159,9 @@ void AmclNode::collect_sample(geometry_msgs::PoseWithCovarianceStamped *our_pose
         m_2.push_back(sample_m_2);
 
         m_2_out << std::setprecision(3)
-              << sample_m_2.values[0] << "\t" << sample_m_2.values[1] << "\t"
-              << sample_m_2.values[2] << "\t" << sample_m_2.values[3] << "\t"
-              << std::endl;
+                << sample_m_2.values[0] << "\t" << sample_m_2.values[1] << "\t"
+                << sample_m_2.values[2] << "\t" << sample_m_2.values[3] << "\t"
+                << std::endl;
         m_2_out.flush();
 
         ROS_DEBUG("M_2 Sample: %f, %f, %f, %f",
@@ -1179,9 +1180,9 @@ void AmclNode::collect_sample(geometry_msgs::PoseWithCovarianceStamped *our_pose
         v_2.push_back(sample_v_2);
 
         v_2_out << std::setprecision(3)
-              << sample_v_2.values[0] << "\t" << sample_v_2.values[1] << "\t"
-              << sample_v_2.values[2] << "\t" << sample_v_2.values[3] << "\t"
-              << std::endl;
+                << sample_v_2.values[0] << "\t" << sample_v_2.values[1] << "\t"
+                << sample_v_2.values[2] << "\t" << sample_v_2.values[3] << "\t"
+                << std::endl;
         v_2_out.flush();
 
         ROS_DEBUG("V_2 Sample: %f, %f, %f, %f",
@@ -1834,7 +1835,6 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
         hmm_use_time = ros::Time::now();
         odata.observations = &observations;
 
-<<<<<<< HEAD
         if (propagate_based_on_observation){
             odata.nested_velocity.v[0] = velocity_samples[1].v[0];
             odata.nested_velocity.v[1] = velocity_samples[1].v[1];
@@ -1842,16 +1842,16 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
             if (hmm.initialized_()){
                 int number_of_forward_samples = 100;
 
-                DETree result_alpha = hmm.forward(&observations, number_of_forward_samples);
+                DETree * result_alpha = hmm.forward(&observations, number_of_forward_samples);
                 Sampler sampler;
 
                 Sample sample_vel1;
-                sample_vel1 = sampler.sample(&result_alpha);
+                sample_vel1 = sampler.sample(result_alpha);
 
                 int counter = 0;
                 while (std::abs(sample_vel1.values[0] - velocity_samples[1].v[0]) > 0.1
                        || std::abs(sample_vel1.values[1] - velocity_samples[1].v[1]) > 0.1){
-                    sample_vel1 = sampler.sample(&result_alpha);
+                    sample_vel1 = sampler.sample(result_alpha);
                     counter++;
 
                     if (counter > 20){
@@ -1860,6 +1860,8 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
                         break;
                     }
                 }
+
+                delete result_alpha;
 
                 double my_yaw = tf::getYaw(last_published_pose.pose.pose.orientation);
                 pf_vector_t sample;
@@ -1889,16 +1891,16 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
             if (hmm.initialized_()){
                 int number_of_forward_samples = 100;
 
-                DETree result_alpha = hmm.forward(&observations, number_of_forward_samples);
+                DETree * result_alpha = hmm.forward(&observations, number_of_forward_samples);
                 Sampler sampler;
 
                 Sample sample_vel1;
-                sample_vel1 = sampler.sample(&result_alpha);
+                sample_vel1 = sampler.sample(result_alpha);
 
                 int counter = 0;
                 while (std::abs(sample_vel1.values[0] - velocity_samples[1].v[0]) > 0.1
                        || std::abs(sample_vel1.values[1] - velocity_samples[1].v[1]) > 0.1){
-                    sample_vel1 = sampler.sample(&result_alpha);
+                    sample_vel1 = sampler.sample(result_alpha);
                     counter++;
 
                     if (counter > 20){
@@ -1907,6 +1909,8 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
                         break;
                     }
                 }
+
+                delete result_alpha;
 
                 double my_yaw = tf::getYaw(last_published_pose.pose.pose.orientation);
                 pf_vector_t sample;
@@ -1955,50 +1959,68 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
                     odata.nested_velocity.v[1] = 0.0;
                 }
             }
-=======
-        double dice = drand48() * 100;
-        if (dice < 90){
-            odata.nested_velocity.v[0] = 0.4;
-            odata.nested_velocity.v[1] = 0.0;
-            odata.nested_velocity.v[2] = 0.0;
-        } else if (dice < 95){
-            odata.nested_velocity.v[0] = 0.0;
-            odata.nested_velocity.v[1] = 0.0;
-            odata.nested_velocity.v[2] = 0.2;
-        } else {
-            odata.nested_velocity.v[0] = 0.0;
-            odata.nested_velocity.v[1] = 0.0;
-            odata.nested_velocity.v[2] = -0.2;
->>>>>>> 7a1e470374fd18b826838acf817f8b957de466d9
         }
 
         if (odata.time > 1.2){
             odata.time = 1.2;
         }
 
+        double max_speed_thresh = 0.6;
+
+        if (odata.nested_velocity.v[0] > max_speed_thresh){
+            odata.nested_velocity.v[0] = max_speed_thresh;
+        }else if (odata.nested_velocity.v[0] < -max_speed_thresh){
+            odata.nested_velocity.v[0] = -max_speed_thresh;
+        }
+        if (odata.nested_velocity.v[1] > max_speed_thresh){
+            odata.nested_velocity.v[1] = max_speed_thresh;
+        }else if (odata.nested_velocity.v[1] < -max_speed_thresh){
+            odata.nested_velocity.v[1] = -max_speed_thresh;
+        }
+
+        if (std::isnan(odata.nested_velocity.v[2])){
+            odata.nested_velocity.v[2] = 0.0;
+        }
+
+        double old_vel_angle = pf_vector_angle(velocity_samples[0]);
+        double new_vel_angle = pf_vector_angle(velocity_samples[1]);
+
+        odata.velocity_angle_diff = (old_vel_angle - new_vel_angle);
+        if(std::isnan(odata.velocity_angle_diff)){
+            odata.velocity_angle_diff = 0.0;
+        }
+
+        if (std::abs(odata.velocity_angle_diff) > M_PI / 4){ // Limiting the angle correction to M_PI/4 to
+            //  avoid swirl effect in the nested particles
+            odata.velocity_angle_diff = M_PI / 4;
+            if (odata.velocity_angle_diff < 0)
+                odata.velocity_angle_diff *= -1;
+        }
+
+        this->angle_correction = odata.velocity_angle_diff;
+
         ROS_WARN("Delta Time: %f", odata.time);
 
-        ROS_WARN("Fixed Motion Model Velocity: %f, %f",
+        ROS_WARN("Estimated Velocity: %f, %f",
                  odata.nested_velocity.v[0],
                 odata.nested_velocity.v[1]
                 );
 
-        ROS_WARN("Fixed Motion Model Delta: %f, %f",
+        ROS_WARN("Estimated Delta: %f, %f",
                  odata.nested_velocity.v[0] * odata.time,
                 odata.nested_velocity.v[1] * odata.time
                 );
 
-//        ROS_WARN("Agnle Correction: %f", odata.velocity_angle_diff);
+        //        ROS_WARN("Agnle Correction: %f", odata.velocity_angle_diff);
 
         /**
-          Notes for me:
-          UpdateAction essentially applies the transition function to all samples present in the sets of samples that are contained
-          in "pf_" . There are two sets of samples in pf_
-          It receives the odom data ...which is the current pose, and the delta between current pose and earlier pose. This data
-          is used as the "action" which is used to sample the particles to proliferate them to to current set of pose hypotheses.
-          Appropriate noise is included (for both rotation and translation) and the sampling is done using a zero-mean gaussian.
-
-          */
+              Notes for me:
+              UpdateAction essentially applies the transition function to all samples present in the sets of samples that are contained
+              in "pf_" . There are two sets of samples in pf_
+              It receives the odom data ...which is the current pose, and the delta between current pose and earlier pose. This data
+              is used as the "action" which is used to sample the particles to proliferate them to to current set of pose hypotheses.
+              Appropriate noise is included (for both rotation and translation) and the sampling is done using a zero-mean gaussian.
+              */
         // Use the action data to update the filter
         odom_->UpdateAction(pf_, (AMCLSensorData*)&odata);
 
