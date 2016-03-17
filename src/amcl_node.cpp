@@ -71,7 +71,7 @@
 #include "cmvision/Blob.h"
 
 // SINA: Header files needed for the Monte Carlo HMM
-#include "MCFHMM.h"
+#include "MCHMM.h"
 #include "Sampler.h"
 
 #include "gazebo_msgs/GetModelState.h"
@@ -172,7 +172,7 @@ private:
     double occlusion_proportion;
 
     /* SINA: this object will be used to train and reason from the hmm */
-    MCFHMM hmm;
+    MCHMM hmm;
 
     // SINA: These two variables will be used to find out when to learn the HMM
     bool learn_criteria;

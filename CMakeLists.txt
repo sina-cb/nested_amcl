@@ -91,18 +91,18 @@ add_library(nested_amcl_sensors
                     src/sensors/amcl_odom.cpp
                     src/sensors/amcl_laser.cpp)
 
-add_library(MCFHMM_lib
+add_library(MCHMM_lib
 					MCFHMM/src/Sampler.cpp
-					MCFHMM/src/MCFHMM.cpp
+					MCFHMM/src/MCHMM.cpp
 					MCFHMM/src/DETree.cpp
 					MCFHMM/src/Sample.cpp
 					MCFHMM/src/Observation.cpp
 					MCFHMM/src/Timer.cpp)
 
 
-set(MCFHMM_HDRs
+set(MCHMM_HDRs
 	MCFHMM/include/Sampler.h
-	MCFHMM/include/MCFHMM.h
+	MCFHMM/include/MCHMM.h
 	MCFHMM/include/DETree.h
 	MCFHMM/include/Sample.h
 	MCFHMM/include/Observation.h
@@ -128,21 +128,21 @@ set(nested_amcl_sensors_HDRs
 )
 
 
-target_link_libraries(nested_amcl_sensors nested_amcl_map nested_amcl_pf MCFHMM_lib)
+target_link_libraries(nested_amcl_sensors nested_amcl_map nested_amcl_pf MCHMM_lib)
 
 add_executable(nested_amcl
-                       src/amcl_node.cpp ${MCFHMM_HDRs} ${nested_amcl_pf_HDRs} ${nested_amcl_map_HDRs} ${nested_amcl_sensors_HDRs})
+                       src/amcl_node.cpp ${MCHMM_HDRs} ${nested_amcl_pf_HDRs} ${nested_amcl_map_HDRs} ${nested_amcl_sensors_HDRs})
 add_dependencies(nested_amcl amcl_gencfg)
 
 target_link_libraries(nested_amcl
-    nested_amcl_sensors nested_amcl_map nested_amcl_pf MCFHMM_lib
+    nested_amcl_sensors nested_amcl_map nested_amcl_pf MCHMM_lib
     ${Boost_LIBRARIES}
     ${catkin_LIBRARIES}
     ${GLOG_LIBRARY}
 )
 
 install( TARGETS
-    nested_amcl nested_amcl_sensors nested_amcl_map nested_amcl_pf MCFHMM_lib
+    nested_amcl nested_amcl_sensors nested_amcl_map nested_amcl_pf MCHMM_lib
     ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
     LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
     RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
