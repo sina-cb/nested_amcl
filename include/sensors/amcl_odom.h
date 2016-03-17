@@ -31,7 +31,7 @@
 
 #include "amcl_sensor.h"
 #include "../pf/pf_pdf.h"
-#include "MCFHMM.h"
+#include "MCHMM.h"
 
 namespace amcl
 {
@@ -65,7 +65,7 @@ class AMCLOdom : public AMCLSensor
 public: AMCLOdom();
 
     // Constructor with map parameter (Created by KPM for NPF)
-public: AMCLOdom(map_t *map, MCFHMM *hmm);
+public: AMCLOdom(map_t *map, MCHMM *hmm);
 
 public: void SetModelDiff(double alpha1,
                           double alpha2,
@@ -99,7 +99,7 @@ private: odom_model_t model_type;
     // Drift parameters
 private: double alpha1, alpha2, alpha3, alpha4, alpha5;
 
-private: MCFHMM *hmm;
+private: MCHMM *hmm;
 
     // Map for generating nested particle poses within the map.
     map_t *map;
