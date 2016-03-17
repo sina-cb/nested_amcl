@@ -531,7 +531,7 @@ AmclNode::AmclNode() :
     std::string home_path = std::string(getenv("HOME"));
 
 
-    algo_name = "LMCHMM";
+    algo_name = "STATIC_MOTION";
     std::string file_name;
 
     private_nh_.param("robot_start_config_id", robot_start_config_id, std::string("DefaultConfig") );
@@ -1131,12 +1131,12 @@ void AmclNode::collect_sample(geometry_msgs::PoseWithCovarianceStamped *our_pose
         collected_sample++;
         ROS_WARN("Collected samples: %d", collected_sample);
 
-        if (collected_sample >= 10){
-            collected_sample = 0;
-            learn_criteria = true;
+//        if (collected_sample >= 10){
+//            collected_sample = 0;
+//            learn_criteria = true;
 
-            ROS_WARN("Let's learn something!");
-        }
+//            ROS_WARN("Let's learn something!");
+//        }
     }
 
 }
@@ -1771,174 +1771,33 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
         hmm_use_time = ros::Time::now();
         odata.observations = &observations;
 
-        if (propagate_based_on_observation){
-            odata.nested_velocity.v[0] = velocity_samples[1].v[0];
-            odata.nested_velocity.v[1] = velocity_samples[1].v[1];
-
-            if (hmm.initialized_()){
-                int number_of_forward_samples = 100;
-
-                DETree result_alpha = hmm.forward(&observations, number_of_forward_samples);
-                Sampler sampler;
-
-                Sample sample_vel1;
-                sample_vel1 = sampler.sample(&result_alpha);
-
-                int counter = 0;
-                while (std::abs(sample_vel1.values[0] - velocity_samples[1].v[0]) > 0.1
-                       || std::abs(sample_vel1.values[1] - velocity_samples[1].v[1]) > 0.1){
-                    sample_vel1 = sampler.sample(&result_alpha);
-                    counter++;
-
-                    if (counter > 20){
-                        sample_vel1.values[0] = velocity_samples[1].v[0];
-                        sample_vel1.values[1] = velocity_samples[1].v[1];
-                        break;
-                    }
-                }
-
-                double my_yaw = tf::getYaw(last_published_pose.pose.pose.orientation);
-                pf_vector_t sample;
-                sample.v[0] = sample_vel1.values[0];
-                sample.v[1] = sample_vel1.values[1];
-                if (std::abs(my_yaw - pf_vector_angle(sample)) > M_PI / 6){
-                    double s = std::sqrt(std::pow(sample_vel1.values[0], 2) + std::pow(sample_vel1.values[1], 2));
-                    sample_vel1.values[0] = s * std::cos(my_yaw);
-                    sample_vel1.values[1] = s * std::sin(my_yaw);
-                }
-
-                odata.nested_velocity.v[0] = (sample_vel1.values[0] + odata.nested_velocity.v[0]) / 2.0;
-                odata.nested_velocity.v[1] = (sample_vel1.values[1] + odata.nested_velocity.v[1]) / 2.0;
-
-                ROS_WARN("Velocity Sample: %f, %f",
-                         sample_vel1.values[0],
-                        sample_vel1.values[1]
-                        );
-
-                // Setting the last velocity sample to the one estimated now!
-                velocity_samples[1].v[0] = odata.nested_velocity.v[0];
-                velocity_samples[1].v[1] = odata.nested_velocity.v[1];
-            }
-
-            propagate_based_on_observation = false;
-        }else{
-            if (hmm.initialized_()){
-                int number_of_forward_samples = 100;
-
-                DETree result_alpha = hmm.forward(&observations, number_of_forward_samples);
-                Sampler sampler;
-
-                Sample sample_vel1;
-                sample_vel1 = sampler.sample(&result_alpha);
-
-                int counter = 0;
-                while (std::abs(sample_vel1.values[0] - velocity_samples[1].v[0]) > 0.1
-                       || std::abs(sample_vel1.values[1] - velocity_samples[1].v[1]) > 0.1){
-                    sample_vel1 = sampler.sample(&result_alpha);
-                    counter++;
-
-                    if (counter > 20){
-                        sample_vel1.values[0] = velocity_samples[1].v[0];
-                        sample_vel1.values[1] = velocity_samples[1].v[1];
-                        break;
-                    }
-                }
-
-                double my_yaw = tf::getYaw(last_published_pose.pose.pose.orientation);
-                pf_vector_t sample;
-                sample.v[0] = sample_vel1.values[0];
-                sample.v[1] = sample_vel1.values[1];
-                ROS_ERROR("My Yaw: %f", my_yaw);
-                ROS_ERROR("Vel Orien: %f", pf_vector_angle(sample));
-                ROS_ERROR("Diff Abs: %f", std::abs(my_yaw - pf_vector_angle(sample)));
-                if (std::abs(my_yaw - pf_vector_angle(sample)) > M_PI / 6){
-                    double cor = drand48() * M_PI / 6 - M_PI / 12;
-                    double s = std::sqrt(std::pow(sample_vel1.values[0], 2) + std::pow(sample_vel1.values[1], 2));
-                    sample_vel1.values[0] = s * std::cos(my_yaw + cor);
-                    sample_vel1.values[1] = s * std::sin(my_yaw + cor);
-                }
-
-                if (std::abs(sample_vel1.values[0]) > std::abs(sample_vel1.values[1])){
-                    sample_vel1.values[0] *= 1.2;
-                }else{
-                    sample_vel1.values[1] *= 1.2;
-                }
-
-                odata.nested_velocity.v[0] = sample_vel1.values[0];
-                odata.nested_velocity.v[1] = sample_vel1.values[1];
-
-                ROS_WARN("Velocity Sample: %f, %f",
-                         sample_vel1.values[0],
-                        sample_vel1.values[1]
-                        );
-
-                // Setting the last velocity sample to the one estimated now!
-                velocity_samples[1].v[0] = odata.nested_velocity.v[0];
-                velocity_samples[1].v[1] = odata.nested_velocity.v[1];
-
-                ROS_DEBUG("Observation Size: %d, M Size: %d, V Size: %d", observations.size(), m_.size(), v_.size());
-
-            }else{
-                ROS_WARN("No HMM and no obsevations, just use the previous velocity as our current velocity!!!");
-                odata.nested_velocity.v[0] = velocity_samples[1].v[0];
-                odata.nested_velocity.v[1] = velocity_samples[1].v[1];
-
-                if (std::isnan(velocity_samples[1].v[0])){
-                    odata.nested_velocity.v[0] = 0.0;
-                }
-
-                if (std::isnan(velocity_samples[1].v[1])){
-                    odata.nested_velocity.v[1] = 0.0;
-                }
-            }
+        double dice = drand48() * 100;
+        if (dice < 90){
+            odata.nested_velocity.v[0] = 0.4;
+            odata.nested_velocity.v[1] = 0.0;
+            odata.nested_velocity.v[2] = 0.0;
+        } else if (dice < 95){
+            odata.nested_velocity.v[0] = 0.0;
+            odata.nested_velocity.v[1] = 0.0;
+            odata.nested_velocity.v[2] = 0.2;
+        } else {
+            odata.nested_velocity.v[0] = 0.0;
+            odata.nested_velocity.v[1] = 0.0;
+            odata.nested_velocity.v[2] = -0.2;
         }
 
         if (odata.time > 1.2){
             odata.time = 1.2;
         }
 
-        double max_speed_thresh = 0.6;
-
-        if (odata.nested_velocity.v[0] > max_speed_thresh){
-            odata.nested_velocity.v[0] = max_speed_thresh;
-        }else if (odata.nested_velocity.v[0] < -max_speed_thresh){
-            odata.nested_velocity.v[0] = -max_speed_thresh;
-        }
-        if (odata.nested_velocity.v[1] > max_speed_thresh){
-            odata.nested_velocity.v[1] = max_speed_thresh;
-        }else if (odata.nested_velocity.v[1] < -max_speed_thresh){
-            odata.nested_velocity.v[1] = -max_speed_thresh;
-        }
-
-        if (std::isnan(odata.nested_velocity.v[2])){
-            odata.nested_velocity.v[2] = 0.0;
-        }
-
-        double old_vel_angle = pf_vector_angle(velocity_samples[0]);
-        double new_vel_angle = pf_vector_angle(velocity_samples[1]);
-
-        odata.velocity_angle_diff = (old_vel_angle - new_vel_angle);
-        if(std::isnan(odata.velocity_angle_diff)){
-            odata.velocity_angle_diff = 0.0;
-        }
-
-        if (std::abs(odata.velocity_angle_diff) > M_PI / 4){ // Limiting the angle correction to M_PI/4 to
-            //  avoid swirl effect in the nested particles
-            odata.velocity_angle_diff = M_PI / 4;
-            if (odata.velocity_angle_diff < 0)
-                odata.velocity_angle_diff *= -1;
-        }
-
-        this->angle_correction = odata.velocity_angle_diff;
-
         ROS_WARN("Delta Time: %f", odata.time);
 
-        ROS_WARN("Estimated Velocity: %f, %f",
+        ROS_WARN("Fixed Motion Model Velocity: %f, %f",
                  odata.nested_velocity.v[0],
                 odata.nested_velocity.v[1]
                 );
 
-        ROS_WARN("Estimated Delta: %f, %f",
+        ROS_WARN("Fixed Motion Model Delta: %f, %f",
                  odata.nested_velocity.v[0] * odata.time,
                 odata.nested_velocity.v[1] * odata.time
                 );
