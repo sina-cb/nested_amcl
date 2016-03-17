@@ -1861,8 +1861,6 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
                     }
                 }
 
-                delete result_alpha;
-
                 double my_yaw = tf::getYaw(last_published_pose.pose.pose.orientation);
                 pf_vector_t sample;
                 sample.v[0] = sample_vel1.values[0];
@@ -1909,8 +1907,6 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
                         break;
                     }
                 }
-
-                delete result_alpha;
 
                 double my_yaw = tf::getYaw(last_published_pose.pose.pose.orientation);
                 pf_vector_t sample;
@@ -2782,6 +2778,8 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
 
             this->tfb_->sendTransform(nested_tmp_tf_stamped);
         }
+
+        collect_sample(&last_published_pose, &nested_last_published_pose, landmark_r_sample, landmark_phi_sample, nested_MSE);
 
     }
     else if(latest_tf_valid_)

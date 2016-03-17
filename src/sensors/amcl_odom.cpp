@@ -413,6 +413,8 @@ void AMCLOdom::getNestedParticlePose(pf_vector_t *odom_pose, pf_vector_t *delta,
             delta->v[1] = 0.00;
             delta->v[2] = -(M_PI/6);
         }
+        delta->v[0] = std::cos(delta->v[2]) * delta_ / 1.5;
+        delta->v[1] = std::sin(delta->v[2]) * delta_ / 1.5;
     }else if (map_cell->occ_state >= 0){ // If the particle is on the occupied or unknown cells of the map
         double* walls = map_side_walls(this->map, *odom_pose, 3.0);
 
