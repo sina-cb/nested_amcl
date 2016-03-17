@@ -150,12 +150,16 @@ public:
 
     // SINA: Collect samples for a separate HMM run
     std::string obs_file_path;
-    std::string m_file_path;
-    std::string v_file_path;
+    std::string m_1_file_path;
+    std::string v_1_file_path;
+    std::string m_2_file_path;
+    std::string v_2_file_path;
     std::string results_file_path;
     std::ofstream obs_out;
-    std::ofstream m_out;
-    std::ofstream v_out;
+    std::ofstream m_1_out;
+    std::ofstream v_1_out;
+    std::ofstream m_2_out;
+    std::ofstream v_2_out;
     std::ofstream results_out;
 
 private:
@@ -191,9 +195,12 @@ private:
      * we have new data available (or we can have intervals, still not decided)
      */
     vector<Observation> observations;
-    vector<Sample>      pi_;
-    vector<Sample>      m_;
-    vector<Sample>      v_;
+    vector<Sample>      pi_1;
+    vector<Sample>      m_1;
+    vector<Sample>      v_1;
+    vector<Sample>      pi_2;
+    vector<Sample>      m_2;
+    vector<Sample>      v_2;
 
     ros::Time           sampling_time[3];
     ros::Time           hmm_use_time;
@@ -408,8 +415,10 @@ void sigintHandler(int sig)
     ROS_FATAL("Exiting the process completely!");
 
     amcl_node_ptr.get()->obs_out.close();
-    amcl_node_ptr.get()->m_out.close();
-    amcl_node_ptr.get()->v_out.close();
+    amcl_node_ptr.get()->m_1_out.close();
+    amcl_node_ptr.get()->v_1_out.close();
+    amcl_node_ptr.get()->m_2_out.close();
+    amcl_node_ptr.get()->v_2_out.close();
 
     ros::shutdown();
     exit(0);
@@ -608,13 +617,17 @@ AmclNode::AmclNode() :
 
     // SINA: Initialize the file paths for HMM data collection
     obs_file_path = home_path + "/Desktop/obs.txt";
-    m_file_path = home_path + "/Desktop/m.txt";
-    v_file_path = home_path + "/Desktop/v.txt";
+    m_1_file_path = home_path + "/Desktop/m_1.txt";
+    v_1_file_path = home_path + "/Desktop/v_1.txt";
+    m_2_file_path = home_path + "/Desktop/m_2.txt";
+    v_2_file_path = home_path + "/Desktop/v_2.txt";
     results_file_path = home_path + "/indigo_workspace/dump_files/" + file_name.c_str();
 
     obs_out.open(obs_file_path, ios::out);
-    m_out.open(m_file_path, ios::out);
-    v_out.open(v_file_path, ios::out);
+    m_1_out.open(m_1_file_path, ios::out);
+    v_1_out.open(v_1_file_path, ios::out);
+    m_2_out.open(m_2_file_path, ios::out);
+    v_2_out.open(v_2_file_path, ios::out);
     results_out.open(results_file_path, ios::out);
 
     // Write the headers to the collected data file
@@ -623,19 +636,27 @@ AmclNode::AmclNode() :
                 << "Junction" << "\t" << "WallLeft" << "\t"
                 << "WallRight" << std::endl;
 
-        m_out << "OldVel_X" << "\t" << "OldVel_Y" << "\t"
+        m_1_out << "OldVel_X" << "\t" << "OldVel_Y" << "\t"
               << "NewVel_X" << "\t" << "NewVel_Y" << std::endl;
 
-        v_out << "CrossWALK" << "\t" << "TurnPOINT" << "\t"
+        v_1_out << "CrossWALK" << "\t" << "TurnPOINT" << "\t"
               << "Junction" << "\t" << "WallLeft" << "\t"
               << "WallRight" << "\t" << "NewVel_X" << "\t"
               << "NewVel_Y" << std::endl;
 
+        m_2_out << "OldAcc_X" << "\t" << "OldAcc_Y" << "\t"
+              << "NewAcc_X" << "\t" << "NewAcc_Y" << std::endl;
+
+        v_2_out << "NewVel_X" << "\t" << "NewVel_y" << "\t"
+              << "NewAcc_X" << "\t" << "NewAcc_Y" << std::endl;
+
         results_out << headers.str() << std::endl;
 
         obs_out.flush();
-        m_out.flush();
-        v_out.flush();
+        m_1_out.flush();
+        v_1_out.flush();
+        m_2_out.flush();
+        v_2_out.flush();
         results_out.flush();
     }
 
@@ -907,19 +928,19 @@ void AmclNode::learn_HMM(){
     int max_iterations = 2;
     int N = 20;
 
-    for (size_t i = 0; i < pi_.size(); i++){
-        pi_[i].p = 1.0 / pi_.size();
+    for (size_t i = 0; i < pi_1.size(); i++){
+        pi_1[i].p = 1.0 / pi_1.size();
     }
 
-    for (size_t i = 0; i < m_.size(); i++){
-        m_[i].p = 1.0 / m_.size();
+    for (size_t i = 0; i < m_1.size(); i++){
+        m_1[i].p = 1.0 / m_1.size();
     }
 
-    for (size_t i = 0; i < v_.size(); i++){
-        v_[i].p = 1.0 / v_.size();
+    for (size_t i = 0; i < v_1.size(); i++){
+        v_1[i].p = 1.0 / v_1.size();
     }
 
-    hmm.set_distributions(&pi_, &m_, &v_, 0.5);
+    hmm.set_distributions(&pi_1, &m_1, &v_1, 0.5);
 
     hmm.learn_hmm(&observations, max_iterations, N);
 
@@ -1081,51 +1102,93 @@ void AmclNode::collect_sample(geometry_msgs::PoseWithCovarianceStamped *our_pose
                 obs.values[3]
                 );
 
-        Sample sample_m;
-        sample_m.values.push_back(velocity_samples[current_pose_index - 2].v[0]);
-        sample_m.values.push_back(velocity_samples[current_pose_index - 2].v[1]);
-        sample_m.values.push_back(velocity_samples[current_pose_index - 1].v[0]);
-        sample_m.values.push_back(velocity_samples[current_pose_index - 1].v[1]);
+        Sample sample_m_1;
+        sample_m_1.values.push_back(velocity_samples[current_pose_index - 2].v[0]);
+        sample_m_1.values.push_back(velocity_samples[current_pose_index - 2].v[1]);
+        sample_m_1.values.push_back(velocity_samples[current_pose_index - 1].v[0]);
+        sample_m_1.values.push_back(velocity_samples[current_pose_index - 1].v[1]);
 
-        m_.push_back(sample_m);
+        m_1.push_back(sample_m_1);
 
-        m_out << std::setprecision(3)
-              << sample_m.values[0] << "\t" << sample_m.values[1] << "\t"
-              << sample_m.values[2] << "\t" << sample_m.values[3] << "\t"
+        m_1_out << std::setprecision(3)
+              << sample_m_1.values[0] << "\t" << sample_m_1.values[1] << "\t"
+              << sample_m_1.values[2] << "\t" << sample_m_1.values[3] << "\t"
               << std::endl;
-        m_out.flush();
+        m_1_out.flush();
 
-        ROS_DEBUG("M Sample: %f, %f, %f, %f",
-                  sample_m.values[0],
-                sample_m.values[1],
-                sample_m.values[2],
-                sample_m.values[3]
+        ROS_DEBUG("M_1 Sample: %f, %f, %f, %f",
+                  sample_m_1.values[0],
+                sample_m_1.values[1],
+                sample_m_1.values[2],
+                sample_m_1.values[3]
                 );
 
-        Sample sample_v;
-        sample_v.values.push_back(cross_walk_seen);
-        sample_v.values.push_back(junction_seen);
-        sample_v.values.push_back(walls_dists[0]);
-        sample_v.values.push_back(walls_dists[1]);
-        sample_v.values.push_back(velocity_samples[current_pose_index - 1].v[0]);
-        sample_v.values.push_back(velocity_samples[current_pose_index - 1].v[1]);
+        Sample sample_v_1;
+        sample_v_1.values.push_back(cross_walk_seen);
+        sample_v_1.values.push_back(junction_seen);
+        sample_v_1.values.push_back(walls_dists[0]);
+        sample_v_1.values.push_back(walls_dists[1]);
+        sample_v_1.values.push_back(velocity_samples[current_pose_index - 1].v[0]);
+        sample_v_1.values.push_back(velocity_samples[current_pose_index - 1].v[1]);
 
-        v_.push_back(sample_v);
+        v_1.push_back(sample_v_1);
 
-        v_out << std::setprecision(3)
-              << sample_v.values[0] << "\t" << sample_v.values[1] << "\t"
-              << sample_v.values[2] << "\t" << sample_v.values[3] << "\t"
-              << sample_v.values[4] << "\t" << sample_v.values[5] << "\t"
+        v_1_out << std::setprecision(3)
+              << sample_v_1.values[0] << "\t" << sample_v_1.values[1] << "\t"
+              << sample_v_1.values[2] << "\t" << sample_v_1.values[3] << "\t"
+              << sample_v_1.values[4] << "\t" << sample_v_1.values[5] << "\t"
               << std::endl;
-        v_out.flush();
+        v_1_out.flush();
 
-        ROS_DEBUG("V Sample: %f, %f, %f, %f, %f, %f",
-                  sample_v.values[0],
-                sample_v.values[1],
-                sample_v.values[2],
-                sample_v.values[3],
-                sample_v.values[4],
-                sample_v.values[5]
+        ROS_DEBUG("V_1 Sample: %f, %f, %f, %f, %f, %f",
+                  sample_v_1.values[0],
+                sample_v_1.values[1],
+                sample_v_1.values[2],
+                sample_v_1.values[3],
+                sample_v_1.values[4],
+                sample_v_1.values[5]
+                );
+
+        Sample sample_m_2;
+        sample_m_2.values.push_back(accel_sample[current_pose_index - 2].v[0]);
+        sample_m_2.values.push_back(accel_sample[current_pose_index - 2].v[1]);
+        sample_m_2.values.push_back(accel_sample[current_pose_index - 1].v[0]);
+        sample_m_2.values.push_back(accel_sample[current_pose_index - 1].v[1]);
+
+        m_2.push_back(sample_m_2);
+
+        m_2_out << std::setprecision(3)
+              << sample_m_2.values[0] << "\t" << sample_m_2.values[1] << "\t"
+              << sample_m_2.values[2] << "\t" << sample_m_2.values[3] << "\t"
+              << std::endl;
+        m_2_out.flush();
+
+        ROS_DEBUG("M_2 Sample: %f, %f, %f, %f",
+                  sample_m_2.values[0],
+                sample_m_2.values[1],
+                sample_m_2.values[2],
+                sample_m_2.values[3]
+                );
+
+        Sample sample_v_2;
+        sample_v_2.values.push_back(velocity_samples[current_pose_index - 1].v[0]);
+        sample_v_2.values.push_back(velocity_samples[current_pose_index - 1].v[1]);
+        sample_v_2.values.push_back(accel_sample[current_pose_index - 1].v[0]);
+        sample_v_2.values.push_back(accel_sample[current_pose_index - 1].v[1]);
+
+        v_2.push_back(sample_v_2);
+
+        v_2_out << std::setprecision(3)
+              << sample_v_2.values[0] << "\t" << sample_v_2.values[1] << "\t"
+              << sample_v_2.values[2] << "\t" << sample_v_2.values[3] << "\t"
+              << std::endl;
+        v_2_out.flush();
+
+        ROS_DEBUG("V_2 Sample: %f, %f, %f, %f",
+                  sample_v_2.values[0],
+                sample_v_2.values[1],
+                sample_v_2.values[2],
+                sample_v_2.values[3]
                 );
 
         collected_sample++;
@@ -1207,7 +1270,7 @@ void AmclNode::init_HMM(){
         pi_temp.values.push_back(0.0);
         pi_temp.values.push_back(0.0);
 
-        pi_.push_back(pi_temp);
+        pi_1.push_back(pi_temp);
     }
 
     hmm.set_limits(pi_low_limits, pi_high_limits, m_low_limits, m_high_limits, v_low_limits, v_high_limits);
@@ -1876,7 +1939,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
                 velocity_samples[1].v[0] = odata.nested_velocity.v[0];
                 velocity_samples[1].v[1] = odata.nested_velocity.v[1];
 
-                ROS_DEBUG("Observation Size: %d, M Size: %d, V Size: %d", observations.size(), m_.size(), v_.size());
+                ROS_DEBUG("Observation Size: %d, M Size: %d, V Size: %d", observations.size(), m_1.size(), v_1.size());
 
             }else{
                 ROS_WARN("No HMM and no obsevations, just use the previous velocity as our current velocity!!!");
