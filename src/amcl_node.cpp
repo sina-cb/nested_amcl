@@ -1834,6 +1834,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
         hmm_use_time = ros::Time::now();
         odata.observations = &observations;
 
+<<<<<<< HEAD
         if (propagate_based_on_observation){
             odata.nested_velocity.v[0] = velocity_samples[1].v[0];
             odata.nested_velocity.v[1] = velocity_samples[1].v[1];
@@ -1954,54 +1955,35 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
                     odata.nested_velocity.v[1] = 0.0;
                 }
             }
+=======
+        double dice = drand48() * 100;
+        if (dice < 90){
+            odata.nested_velocity.v[0] = 0.4;
+            odata.nested_velocity.v[1] = 0.0;
+            odata.nested_velocity.v[2] = 0.0;
+        } else if (dice < 95){
+            odata.nested_velocity.v[0] = 0.0;
+            odata.nested_velocity.v[1] = 0.0;
+            odata.nested_velocity.v[2] = 0.2;
+        } else {
+            odata.nested_velocity.v[0] = 0.0;
+            odata.nested_velocity.v[1] = 0.0;
+            odata.nested_velocity.v[2] = -0.2;
+>>>>>>> 7a1e470374fd18b826838acf817f8b957de466d9
         }
 
         if (odata.time > 1.2){
             odata.time = 1.2;
         }
 
-        double max_speed_thresh = 0.6;
-
-        if (odata.nested_velocity.v[0] > max_speed_thresh){
-            odata.nested_velocity.v[0] = max_speed_thresh;
-        }else if (odata.nested_velocity.v[0] < -max_speed_thresh){
-            odata.nested_velocity.v[0] = -max_speed_thresh;
-        }
-        if (odata.nested_velocity.v[1] > max_speed_thresh){
-            odata.nested_velocity.v[1] = max_speed_thresh;
-        }else if (odata.nested_velocity.v[1] < -max_speed_thresh){
-            odata.nested_velocity.v[1] = -max_speed_thresh;
-        }
-
-        if (std::isnan(odata.nested_velocity.v[2])){
-            odata.nested_velocity.v[2] = 0.0;
-        }
-
-        double old_vel_angle = pf_vector_angle(velocity_samples[0]);
-        double new_vel_angle = pf_vector_angle(velocity_samples[1]);
-
-        odata.velocity_angle_diff = (old_vel_angle - new_vel_angle);
-        if(std::isnan(odata.velocity_angle_diff)){
-            odata.velocity_angle_diff = 0.0;
-        }
-
-        if (std::abs(odata.velocity_angle_diff) > M_PI / 4){ // Limiting the angle correction to M_PI/4 to
-            //  avoid swirl effect in the nested particles
-            odata.velocity_angle_diff = M_PI / 4;
-            if (odata.velocity_angle_diff < 0)
-                odata.velocity_angle_diff *= -1;
-        }
-
-        this->angle_correction = odata.velocity_angle_diff;
-
         ROS_WARN("Delta Time: %f", odata.time);
 
-        ROS_WARN("Estimated Velocity: %f, %f",
+        ROS_WARN("Fixed Motion Model Velocity: %f, %f",
                  odata.nested_velocity.v[0],
                 odata.nested_velocity.v[1]
                 );
 
-        ROS_WARN("Estimated Delta: %f, %f",
+        ROS_WARN("Fixed Motion Model Delta: %f, %f",
                  odata.nested_velocity.v[0] * odata.time,
                 odata.nested_velocity.v[1] * odata.time
                 );
@@ -2778,8 +2760,6 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
 
             this->tfb_->sendTransform(nested_tmp_tf_stamped);
         }
-
-        collect_sample(&last_published_pose, &nested_last_published_pose, landmark_r_sample, landmark_phi_sample, nested_MSE);
 
     }
     else if(latest_tf_valid_)
