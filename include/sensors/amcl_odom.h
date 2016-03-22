@@ -66,7 +66,7 @@ class AMCLOdom : public AMCLSensor
 public: AMCLOdom();
 
     // Constructor with map parameter (Created by KPM for NPF)
-public: AMCLOdom(map_t *map, MCHMM *hmm);
+public: AMCLOdom(map_t *map, LMCHMM *hmm);
 
 public: void SetModelDiff(double alpha1,
                           double alpha2,
@@ -100,7 +100,7 @@ private: odom_model_t model_type;
     // Drift parameters
 private: double alpha1, alpha2, alpha3, alpha4, alpha5;
 
-private: MCHMM *hmm;
+private: LMCHMM *hmm;
 
     // Map for generating nested particle poses within the map.
     map_t *map;

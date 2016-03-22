@@ -177,11 +177,13 @@ private:
     double occlusion_proportion;
 
     /* SINA: this object will be used to train and reason from the hmm */
-    MCHMM hmm;
+    LMCHMM hmm;
 
     // SINA: These two variables will be used to find out when to learn the HMM
     bool learn_criteria;
-    int collected_sample;
+    bool set_distributions_before = false;
+    size_t collected_sample;
+    size_t samples_to_learn = 10;
 
     // SINA: when landmark_r and landmark_phi are found, copy them here and reset them when collected
     double landmark_r_sample;
@@ -633,17 +635,15 @@ AmclNode::AmclNode() :
 
     // Write the headers to the collected data file
     {
-        obs_out << "CrossWALK" << "\t" << "TurnPOINT" << "\t"
-                << "Junction" << "\t" << "WallLeft" << "\t"
-                << "WallRight" << std::endl;
+        obs_out << "CrossWALK" << "\t" << "Junction"  << "\t"
+                << "WallLeft"  << "\t" << "WallRight" << std::endl;
 
         m_1_out << "OldVel_X" << "\t" << "OldVel_Y" << "\t"
                 << "NewVel_X" << "\t" << "NewVel_Y" << std::endl;
 
-        v_1_out << "CrossWALK" << "\t" << "TurnPOINT" << "\t"
-                << "Junction" << "\t" << "WallLeft" << "\t"
-                << "WallRight" << "\t" << "NewVel_X" << "\t"
-                << "NewVel_Y" << std::endl;
+        v_1_out << "CrossWALK" << "\t" << "Junction" << "\t"
+                << "WallLeft" << "\t" << "WallRight" << "\t"
+                << "NewVel_X" << "\t" << "NewVel_Y" << std::endl;
 
         m_2_out << "OldAcc_X" << "\t" << "OldAcc_Y" << "\t"
                 << "NewAcc_X" << "\t" << "NewAcc_Y" << std::endl;
@@ -927,21 +927,40 @@ void AmclNode::reconfigureCB(AMCLConfig &config, uint32_t level)
 //       it is meant to update the HMM strucuture and learn the distributions
 void AmclNode::learn_HMM(){
     int max_iterations = 2;
-    int N = 20;
+    int N = 40;
 
-    for (size_t i = 0; i < pi_1.size(); i++){
-        pi_1[i].p = 1.0 / pi_1.size();
+    if (!set_distributions_before){
+        for (size_t i = 0; i < pi_1.size(); i++){
+            pi_1[i].p = 1.0 / pi_1.size();
+        }
+
+        for (size_t i = 0; i < m_1.size(); i++){
+            m_1[i].p = 1.0 / m_1.size();
+        }
+
+        for (size_t i = 0; i < v_1.size(); i++){
+            v_1[i].p = 1.0 / v_1.size();
+        }
+
+        for (size_t i = 0; i < pi_2.size(); i++){
+            pi_2[i].p = 1.0 / pi_2.size();
+        }
+
+        for (size_t i = 0; i < m_2.size(); i++){
+            m_2[i].p = 1.0 / m_2.size();
+        }
+
+        for (size_t i = 0; i < v_2.size(); i++){
+            v_2[i].p = 1.0 / v_2.size();
+        }
+
+        hmm.set_distributions(&pi_1, &m_1, &v_1, 0.5, 0);
+        hmm.set_distributions(&pi_2, &m_2, &v_2, 0.5, 1);
+
+        // Comment this line if you want to set the distribution each time you learn the HMM
+        set_distributions_before = true;
+        ROS_WARN("Set the distributions just once!!!");
     }
-
-    for (size_t i = 0; i < m_1.size(); i++){
-        m_1[i].p = 1.0 / m_1.size();
-    }
-
-    for (size_t i = 0; i < v_1.size(); i++){
-        v_1[i].p = 1.0 / v_1.size();
-    }
-
-    hmm.set_distributions(&pi_1, &m_1, &v_1, 0.5);
 
     hmm.learn_hmm(&observations, max_iterations, N);
 
@@ -1195,7 +1214,8 @@ void AmclNode::collect_sample(geometry_msgs::PoseWithCovarianceStamped *our_pose
         collected_sample++;
         ROS_WARN("Collected samples: %d", collected_sample);
 
-        if (collected_sample >= 10){
+        if (collected_sample >= samples_to_learn){
+            samples_to_learn = 20;
             collected_sample = 0;
             learn_criteria = true;
 
@@ -1207,74 +1227,110 @@ void AmclNode::collect_sample(geometry_msgs::PoseWithCovarianceStamped *our_pose
 
 // init the variable bounds in the HMM (the variables are continuous, but we assume they are bounded)
 void AmclNode::init_HMM(){
+    double min_v = -0.8;
+    double max_v = 0.8;
+
+    double min_a = -0.5;
+    double max_a = +0.5;
+
+    double min_cross = 0;
+    double max_cross = 1;
+
+    double min_junc = 0;
+    double max_junc = 2;
+
+    double min_wall = 0;
+    double max_wall = 3;
+
     // Initializing the limits for the values that each variable can take
     // NOTE: Each vector should contain as many values as the dimension of the corresponding distribution
-    vector<double> * pi_low_limits = new vector<double>();
-    vector<double> * pi_high_limits = new vector<double>();
-    vector<double> * m_low_limits = new vector<double>();
-    vector<double> * m_high_limits = new vector<double>();
-    vector<double> * v_low_limits = new vector<double>();
-    vector<double> * v_high_limits = new vector<double>();
+    vector<double> * pi_low_limits_0 = new vector<double>();
+    vector<double> * pi_high_limits_0 = new vector<double>();
+    vector<double> * m_low_limits_0 = new vector<double>();
+    vector<double> * m_high_limits_0 = new vector<double>();
+    vector<double> * v_low_limits_0 = new vector<double>();
+    vector<double> * v_high_limits_0 = new vector<double>();
 
-    // TODO: Add bounds to the vectors here!
-    double vel_min = -0.4;
+    pi_low_limits_0->push_back(min_v);
+    pi_low_limits_0->push_back(min_v);
 
-    double vel_max = 0.4;
+    pi_high_limits_0->push_back(max_v);
+    pi_high_limits_0->push_back(max_v);
 
-    double crosswalk_min = 0;
-    double crosswalk_max = 1;
+    m_low_limits_0->push_back(min_v);
+    m_low_limits_0->push_back(min_v);
+    m_low_limits_0->push_back(min_v);
+    m_low_limits_0->push_back(min_v);
 
-    double turn_point_min = 0;
-    double turn_point_max = 2;
+    m_high_limits_0->push_back(max_v);
+    m_high_limits_0->push_back(max_v);
+    m_high_limits_0->push_back(max_v);
+    m_high_limits_0->push_back(max_v);
 
-    double junction_min = 0;
-    double junction_max = 2;
+    v_low_limits_0->push_back(min_cross);
+    v_low_limits_0->push_back(min_junc);
+    v_low_limits_0->push_back(min_wall);
+    v_low_limits_0->push_back(min_wall);
+    v_low_limits_0->push_back(min_v);
+    v_low_limits_0->push_back(min_v);
 
-    double wall_min = 0;
-    double wall_max = 3.0;
+    v_high_limits_0->push_back(max_cross);
+    v_high_limits_0->push_back(max_junc);
+    v_high_limits_0->push_back(max_wall);
+    v_high_limits_0->push_back(max_wall);
+    v_high_limits_0->push_back(max_v);
+    v_high_limits_0->push_back(max_v);
 
-    ////////// INIT PI BOUNDS //////////
-    pi_low_limits->push_back(vel_min);
-    pi_low_limits->push_back(vel_min);
+    vector<double> * pi_low_limits_1 = new vector<double>();
+    vector<double> * pi_high_limits_1 = new vector<double>();
+    vector<double> * m_low_limits_1 = new vector<double>();
+    vector<double> * m_high_limits_1 = new vector<double>();
+    vector<double> * v_low_limits_1 = new vector<double>();
+    vector<double> * v_high_limits_1 = new vector<double>();
 
-    pi_high_limits->push_back(vel_max);
-    pi_high_limits->push_back(vel_max);
+    pi_low_limits_1->push_back(min_a);
+    pi_low_limits_1->push_back(min_a);
 
-    ////////// INIT M  BOUNDS //////////
-    m_low_limits->push_back(vel_min);
-    m_low_limits->push_back(vel_min);
-    m_low_limits->push_back(vel_min);
-    m_low_limits->push_back(vel_min);
+    pi_high_limits_1->push_back(max_a);
+    pi_high_limits_1->push_back(max_a);
 
-    m_high_limits->push_back(vel_max);
-    m_high_limits->push_back(vel_max);
-    m_high_limits->push_back(vel_max);
-    m_high_limits->push_back(vel_max);
+    m_low_limits_1->push_back(min_a);
+    m_low_limits_1->push_back(min_a);
+    m_low_limits_1->push_back(min_a);
+    m_low_limits_1->push_back(min_a);
 
-    ////////// INIT V  BOUNDS //////////
-    v_low_limits->push_back(crosswalk_min);
-    v_low_limits->push_back(junction_min);
-    v_low_limits->push_back(wall_min);
-    v_low_limits->push_back(wall_min);
-    v_low_limits->push_back(vel_min);
-    v_low_limits->push_back(vel_min);
+    m_high_limits_1->push_back(max_a);
+    m_high_limits_1->push_back(max_a);
+    m_high_limits_1->push_back(max_a);
+    m_high_limits_1->push_back(max_a);
 
-    v_high_limits->push_back(crosswalk_max);
-    v_high_limits->push_back(junction_max);
-    v_high_limits->push_back(wall_max);
-    v_high_limits->push_back(wall_max);
-    v_high_limits->push_back(vel_max);
-    v_high_limits->push_back(vel_max);
+    v_low_limits_1->push_back(min_v);
+    v_low_limits_1->push_back(min_v);
+    v_low_limits_1->push_back(min_a);
+    v_low_limits_1->push_back(min_a);
+
+    v_high_limits_1->push_back(max_v);
+    v_high_limits_1->push_back(max_v);
+    v_high_limits_1->push_back(max_a);
+    v_high_limits_1->push_back(max_a);
 
     for (size_t i = 0; i < 20; i++){
-        Sample pi_temp;
-        pi_temp.values.push_back(0.0);
-        pi_temp.values.push_back(0.0);
+        Sample zero_vel;
+        zero_vel.values.push_back(0);
+        zero_vel.values.push_back(0);
+        zero_vel.p = 1.0 / 20.0;
 
-        pi_1.push_back(pi_temp);
+        Sample zero_accl;
+        zero_accl.values.push_back(0);
+        zero_accl.values.push_back(0);
+        zero_accl.p = 1.0 / 20.0;
+
+        pi_1.push_back(zero_vel);
+        pi_2.push_back(zero_accl);
     }
 
-    hmm.set_limits(pi_low_limits, pi_high_limits, m_low_limits, m_high_limits, v_low_limits, v_high_limits);
+    hmm.set_limits(pi_low_limits_0, pi_high_limits_0, m_low_limits_0, m_high_limits_0, v_low_limits_0, v_high_limits_0, 0);
+    hmm.set_limits(pi_low_limits_1, pi_high_limits_1, m_low_limits_1, m_high_limits_1, v_low_limits_1, v_high_limits_1, 1);
 
     // After setting these limits, all will be left is to learn the HMM structure! :)
 }
@@ -1842,16 +1898,16 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
             if (hmm.initialized_()){
                 int number_of_forward_samples = 100;
 
-                DETree * result_alpha = hmm.forward(&observations, number_of_forward_samples);
+                vector<DETree *> result_alphas = hmm.forward(&observations, number_of_forward_samples);
                 Sampler sampler;
 
                 Sample sample_vel1;
-                sample_vel1 = sampler.sample(result_alpha);
+                sample_vel1 = sampler.sample(result_alphas[0]);
 
                 int counter = 0;
                 while (std::abs(sample_vel1.values[0] - velocity_samples[1].v[0]) > 0.1
                        || std::abs(sample_vel1.values[1] - velocity_samples[1].v[1]) > 0.1){
-                    sample_vel1 = sampler.sample(result_alpha);
+                    sample_vel1 = sampler.sample(result_alphas[0]);
                     counter++;
 
                     if (counter > 20){
@@ -1859,6 +1915,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
                         sample_vel1.values[1] = velocity_samples[1].v[1];
                         break;
                     }
+                    ROS_WARN("Couldn't find close sample!");
                 }
 
                 double my_yaw = tf::getYaw(last_published_pose.pose.pose.orientation);
@@ -1889,16 +1946,16 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
             if (hmm.initialized_()){
                 int number_of_forward_samples = 100;
 
-                DETree * result_alpha = hmm.forward(&observations, number_of_forward_samples);
+                vector<DETree *> result_alphas = hmm.forward(&observations, number_of_forward_samples);
                 Sampler sampler;
 
                 Sample sample_vel1;
-                sample_vel1 = sampler.sample(result_alpha);
+                sample_vel1 = sampler.sample(result_alphas[0]);
 
                 int counter = 0;
                 while (std::abs(sample_vel1.values[0] - velocity_samples[1].v[0]) > 0.1
                        || std::abs(sample_vel1.values[1] - velocity_samples[1].v[1]) > 0.1){
-                    sample_vel1 = sampler.sample(result_alpha);
+                    sample_vel1 = sampler.sample(result_alphas[0]);
                     counter++;
 
                     if (counter > 20){
