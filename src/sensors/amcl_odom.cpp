@@ -413,8 +413,9 @@ void AMCLOdom::getNestedParticlePose(pf_vector_t *odom_pose, pf_vector_t *delta,
             delta->v[1] = 0.00;
             delta->v[2] = -(M_PI/6);
         }
-        delta->v[0] = std::cos(delta->v[2]) * delta_ / 1.5;
-        delta->v[1] = std::sin(delta->v[2]) * delta_ / 1.5;
+        delta->v[0] = std::cos(delta->v[2]) * delta_ / 3;
+        delta->v[1] = std::sin(delta->v[2]) * delta_ / 3;
+        printf("Kedar Turn!!!\n");
     }else if (map_cell->occ_state >= 0){ // If the particle is on the occupied or unknown cells of the map
         double* walls = map_side_walls(this->map, *odom_pose, 3.0);
 
@@ -432,7 +433,7 @@ void AMCLOdom::getNestedParticlePose(pf_vector_t *odom_pose, pf_vector_t *delta,
             }
         }
 
-        double recovery_turn = correction_angle * 2 * direction;
+        double recovery_turn = M_PI * 2 * direction;
         delta->v[0] = std::cos(odom_pose->v[2] + recovery_turn) * delta_;
         delta->v[1] = std::sin(odom_pose->v[2] + recovery_turn) * delta_;
         delta->v[2] = recovery_turn;

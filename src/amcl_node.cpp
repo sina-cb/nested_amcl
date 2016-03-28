@@ -205,6 +205,10 @@ private:
     vector<Sample>      m_2;
     vector<Sample>      v_2;
 
+    int cross_walk_seen;
+    int junction_seen;
+    double* walls_dists;
+
     ros::Time           sampling_time[3];
     ros::Time           hmm_use_time;
     pf_vector_t         our_previous_pose[3];
@@ -1052,9 +1056,9 @@ void AmclNode::collect_sample(geometry_msgs::PoseWithCovarianceStamped *our_pose
             velocity_samples[current_pose_index - 2].v[1]) / delta_t;
 
     // Find the features based on the new leader pose
-    int cross_walk_seen = map_see_crosswalk(this->map_, leader_pose_v, 0.2, 5);
-    int junction_seen   = map_see_junction (this->map_, leader_pose_v, 0.2, 5);
-    double* walls_dists = map_side_walls   (this->map_, leader_pose_v, 3     );
+    cross_walk_seen = map_see_crosswalk (this->map_, leader_pose_v, 0.2, 5);
+    junction_seen   = map_see_junction (this->map_, leader_pose_v, 0.2, 5);
+    walls_dists     = map_side_walls (this->map_, leader_pose_v, 3);
 
     if (!walls_dists){
         return;
@@ -1891,6 +1895,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
         hmm_use_time = ros::Time::now();
         odata.observations = &observations;
 
+        ROS_ERROR("Junction: %d", junction_seen);
         if (propagate_based_on_observation){
             odata.nested_velocity.v[0] = velocity_samples[1].v[0];
             odata.nested_velocity.v[1] = velocity_samples[1].v[1];
@@ -1915,7 +1920,6 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
                         sample_vel1.values[1] = velocity_samples[1].v[1];
                         break;
                     }
-                    ROS_WARN("Couldn't find close sample!");
                 }
 
                 double my_yaw = tf::getYaw(last_published_pose.pose.pose.orientation);
@@ -1928,8 +1932,8 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
                     sample_vel1.values[1] = s * std::sin(my_yaw);
                 }
 
-                odata.nested_velocity.v[0] = (sample_vel1.values[0] + odata.nested_velocity.v[0]) / 2.0;
-                odata.nested_velocity.v[1] = (sample_vel1.values[1] + odata.nested_velocity.v[1]) / 2.0;
+                odata.nested_velocity.v[0] = (sample_vel1.values[0]);// + odata.nested_velocity.v[0]) / 2.0;
+                odata.nested_velocity.v[1] = (sample_vel1.values[1]);// + odata.nested_velocity.v[1]) / 2.0;
 
                 ROS_WARN("Velocity Sample: %f, %f",
                          sample_vel1.values[0],
@@ -1973,7 +1977,9 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
                 ROS_ERROR("Vel Orien: %f", pf_vector_angle(sample));
                 ROS_ERROR("Diff Abs: %f", std::abs(my_yaw - pf_vector_angle(sample)));
                 if (std::abs(my_yaw - pf_vector_angle(sample)) > M_PI / 6){
-                    double cor = drand48() * M_PI / 6 - M_PI / 12;
+//                    double cor = drand48() * M_PI / 6 - M_PI / 12;
+                    double cor = 0.0;
+
                     double s = std::sqrt(std::pow(sample_vel1.values[0], 2) + std::pow(sample_vel1.values[1], 2));
                     sample_vel1.values[0] = s * std::cos(my_yaw + cor);
                     sample_vel1.values[1] = s * std::sin(my_yaw + cor);
