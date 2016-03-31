@@ -95,7 +95,6 @@ public:
     // Data timestamp
 public:
     double time;
-    vector<Observation> * observations;
 };
 
 }

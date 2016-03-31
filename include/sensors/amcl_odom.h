@@ -56,6 +56,10 @@ public: pf_vector_t delta;
 public: pf_vector_t nested_velocity;
 
 public: double velocity_angle_diff;
+
+public: bool obs_available;
+
+public: vector<Observation> * observations;
 };
 
 
@@ -86,10 +90,11 @@ public: virtual bool UpdateAction(pf_t *pf, AMCLSensorData *data);
     // Update the nested filter based on the action model.  Returns true if the filter
     // has been updated.
 public: virtual bool UpdateNestedAction(pf_t *nested_pf, pf_vector_t vel,
-                                        double correction_angle, double time);
+                                        double correction_angle, double time, bool obs_available);
 
     // Generates fake odom delta based on a behaviour model
-    void getNestedParticlePose(pf_vector_t *odom_pose, pf_vector_t *delta, pf_vector_t vel, double correction_angle, double time);
+    void getNestedParticlePose(pf_vector_t *odom_pose, pf_vector_t *delta, pf_vector_t vel, double correction_angle,
+                               double time, bool obs_available);
 
     // Current data timestamp
 private: double time;

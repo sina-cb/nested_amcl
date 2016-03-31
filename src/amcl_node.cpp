@@ -303,6 +303,7 @@ private:
     ros::Duration save_pose_period;
 
     geometry_msgs::PoseWithCovarianceStamped last_published_pose;
+    geometry_msgs::PoseWithCovarianceStamped one_before_last_published_pose;
 
     geometry_msgs::PoseWithCovarianceStamped nested_last_published_pose;
 
@@ -1894,14 +1895,21 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
         odata.time = (ros::Time::now().toSec() - hmm_use_time.toSec());
         hmm_use_time = ros::Time::now();
         odata.observations = &observations;
+        odata.obs_available = false;
 
-        ROS_ERROR("Junction: %d", junction_seen);
         if (propagate_based_on_observation){
+            odata.obs_available = true;
+
             odata.nested_velocity.v[0] = velocity_samples[1].v[0];
             odata.nested_velocity.v[1] = velocity_samples[1].v[1];
 
             if (hmm.initialized_()){
                 int number_of_forward_samples = 100;
+
+                if (observations.size() > 50){
+                    observations = vector<Observation>(observations.end() - 30, observations.end());
+                    ROS_INFO("Shrinking the observation vector to the last 30 only!");
+                }
 
                 vector<DETree *> result_alphas = hmm.forward(&observations, number_of_forward_samples);
                 Sampler sampler;
@@ -1950,6 +1958,11 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
             if (hmm.initialized_()){
                 int number_of_forward_samples = 100;
 
+                if (observations.size() > 50){
+                    observations = vector<Observation>(observations.end() - 30, observations.end());
+                    ROS_INFO("Shrinking the observation vector to the last 30 only!");
+                }
+
                 vector<DETree *> result_alphas = hmm.forward(&observations, number_of_forward_samples);
                 Sampler sampler;
 
@@ -1969,6 +1982,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
                     }
                 }
 
+                double old_my_yaw = tf::getYaw(one_before_last_published_pose.pose.pose.orientation);
                 double my_yaw = tf::getYaw(last_published_pose.pose.pose.orientation);
                 pf_vector_t sample;
                 sample.v[0] = sample_vel1.values[0];
@@ -1978,11 +1992,76 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
                 ROS_ERROR("Diff Abs: %f", std::abs(my_yaw - pf_vector_angle(sample)));
                 if (std::abs(my_yaw - pf_vector_angle(sample)) > M_PI / 6){
 //                    double cor = drand48() * M_PI / 6 - M_PI / 12;
-                    double cor = 0.0;
+
+                    int direction = -1;
+                    if (my_yaw - old_my_yaw > 0){
+                        direction = 1;
+                    }
+
+                    if (my_yaw < 0 && my_yaw > -M_PI / 2){
+                        if (direction == -1){
+                            my_yaw = -M_PI / 2;
+                            ROS_ERROR("-M_PI / 2");
+                        }else{
+                            my_yaw = 0;
+                            ROS_ERROR("0");
+                        }
+                    }else if (my_yaw < -(M_PI / 2) && my_yaw > -M_PI){
+                        if (direction == -1){
+                            my_yaw = -M_PI;
+                            ROS_ERROR("-M_PI");
+                        }else{
+                            my_yaw = -(M_PI / 2);
+                            ROS_ERROR("-(M_PI / 2)");
+                        }
+
+                    }else if (my_yaw > 0 && my_yaw < M_PI / 2){
+                        if (direction == -1){
+                            my_yaw = 0.0;
+                            ROS_ERROR("0");
+                        }else{
+                            my_yaw = M_PI / 2;
+                            ROS_ERROR("M_PI / 2");
+                        }
+                    }else if (my_yaw > M_PI / 2 && my_yaw < M_PI){
+                        if (direction == -1){
+                            my_yaw = M_PI / 2;
+                            ROS_ERROR("M_PI / 2");
+                        }else{
+                            my_yaw = M_PI;
+                            ROS_ERROR("M_PI");
+                        }
+                    }
+
+//                    if ((my_yaw < 0 && my_yaw > -M_PI / 2) && std::abs(my_yaw - 0.0) < std::abs(my_yaw - (-M_PI / 2))){
+//                        my_yaw = 0;
+//                        ROS_ERROR("0");
+//                    }else if ((my_yaw < 0 && my_yaw > -M_PI / 2) && std::abs(my_yaw - 0.0) >= std::abs(my_yaw - (-M_PI / 2))){
+//                        my_yaw = -M_PI / 2;
+//                        ROS_ERROR("-PI/2");
+//                    }else if ((my_yaw < -(M_PI / 2) && my_yaw > -M_PI) && std::abs(my_yaw - (-M_PI / 2)) < std::abs(my_yaw - (-M_PI))){
+//                        my_yaw = -M_PI / 2;
+//                        ROS_ERROR("-PI/2");
+//                    }else if ((my_yaw < -(M_PI / 2) && my_yaw > -M_PI) && std::abs(my_yaw - (-M_PI / 2)) >= std::abs(my_yaw - (-M_PI))){
+//                        my_yaw = -M_PI;
+//                        ROS_ERROR("-PI");
+//                    }else if ((my_yaw > 0 && my_yaw < M_PI / 2) && std::abs(my_yaw - 0) < std::abs(my_yaw - (M_PI / 2))){
+//                        my_yaw = 0.0;
+//                        ROS_ERROR("0");
+//                    }else if ((my_yaw > 0 && my_yaw < M_PI / 2) && std::abs(my_yaw - 0) >= std::abs(my_yaw - (M_PI / 2))){
+//                        my_yaw = M_PI / 2;
+//                        ROS_ERROR("PI/2");
+//                    }else if ((my_yaw > M_PI / 2 && my_yaw < M_PI) && std::abs(my_yaw - (M_PI / 2)) < std::abs(my_yaw - M_PI)){
+//                        my_yaw = M_PI / 2;
+//                        ROS_ERROR("PI/2");
+//                    }else if ((my_yaw > M_PI / 2 && my_yaw < M_PI) && std::abs(my_yaw - (M_PI / 2)) >= std::abs(my_yaw - M_PI)){
+//                        my_yaw = M_PI;
+//                        ROS_ERROR("PI");
+//                    }
 
                     double s = std::sqrt(std::pow(sample_vel1.values[0], 2) + std::pow(sample_vel1.values[1], 2));
-                    sample_vel1.values[0] = s * std::cos(my_yaw + cor);
-                    sample_vel1.values[1] = s * std::sin(my_yaw + cor);
+                    sample_vel1.values[0] = s * std::cos(my_yaw);
+                    sample_vel1.values[1] = s * std::sin(my_yaw);
                 }
 
                 if (std::abs(sample_vel1.values[0]) > std::abs(sample_vel1.values[1])){
@@ -2618,6 +2697,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
 
             // Publish amcl's best estimate for current pose
             pose_pub_.publish(p);
+            one_before_last_published_pose = last_published_pose;
             last_published_pose = p;
 
 #if COLLECT_DATA
