@@ -1770,6 +1770,11 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
             if (hmm.initialized_()){
                 int number_of_forward_samples = 100;
 
+                if (observations.size() > 50){
+                    observations = vector<Observation>(observations.end() - 30, observations.end());
+                    ROS_INFO("Shrinking the observation vector to the last 30 only!");
+                }
+
                 DETree result_alpha = hmm.forward(&observations, number_of_forward_samples);
                 Sampler sampler;
 
@@ -1816,6 +1821,11 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
         }else{
             if (hmm.initialized_()){
                 int number_of_forward_samples = 100;
+
+                if (observations.size() > 50){
+                    observations = vector<Observation>(observations.end() - 30, observations.end());
+                    ROS_INFO("Shrinking the observation vector to the last 30 only!");
+                }
 
                 DETree result_alpha = hmm.forward(&observations, number_of_forward_samples);
                 Sampler sampler;
