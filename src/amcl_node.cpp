@@ -1991,8 +1991,6 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
                 ROS_ERROR("Vel Orien: %f", pf_vector_angle(sample));
                 ROS_ERROR("Diff Abs: %f", std::abs(my_yaw - pf_vector_angle(sample)));
                 if (std::abs(my_yaw - pf_vector_angle(sample)) > M_PI / 6){
-//                    double cor = drand48() * M_PI / 6 - M_PI / 12;
-
                     int direction = -1;
                     if (my_yaw - old_my_yaw > 0){
                         direction = 1;
@@ -2032,33 +2030,6 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
                             ROS_ERROR("M_PI");
                         }
                     }
-
-//                    if ((my_yaw < 0 && my_yaw > -M_PI / 2) && std::abs(my_yaw - 0.0) < std::abs(my_yaw - (-M_PI / 2))){
-//                        my_yaw = 0;
-//                        ROS_ERROR("0");
-//                    }else if ((my_yaw < 0 && my_yaw > -M_PI / 2) && std::abs(my_yaw - 0.0) >= std::abs(my_yaw - (-M_PI / 2))){
-//                        my_yaw = -M_PI / 2;
-//                        ROS_ERROR("-PI/2");
-//                    }else if ((my_yaw < -(M_PI / 2) && my_yaw > -M_PI) && std::abs(my_yaw - (-M_PI / 2)) < std::abs(my_yaw - (-M_PI))){
-//                        my_yaw = -M_PI / 2;
-//                        ROS_ERROR("-PI/2");
-//                    }else if ((my_yaw < -(M_PI / 2) && my_yaw > -M_PI) && std::abs(my_yaw - (-M_PI / 2)) >= std::abs(my_yaw - (-M_PI))){
-//                        my_yaw = -M_PI;
-//                        ROS_ERROR("-PI");
-//                    }else if ((my_yaw > 0 && my_yaw < M_PI / 2) && std::abs(my_yaw - 0) < std::abs(my_yaw - (M_PI / 2))){
-//                        my_yaw = 0.0;
-//                        ROS_ERROR("0");
-//                    }else if ((my_yaw > 0 && my_yaw < M_PI / 2) && std::abs(my_yaw - 0) >= std::abs(my_yaw - (M_PI / 2))){
-//                        my_yaw = M_PI / 2;
-//                        ROS_ERROR("PI/2");
-//                    }else if ((my_yaw > M_PI / 2 && my_yaw < M_PI) && std::abs(my_yaw - (M_PI / 2)) < std::abs(my_yaw - M_PI)){
-//                        my_yaw = M_PI / 2;
-//                        ROS_ERROR("PI/2");
-//                    }else if ((my_yaw > M_PI / 2 && my_yaw < M_PI) && std::abs(my_yaw - (M_PI / 2)) >= std::abs(my_yaw - M_PI)){
-//                        my_yaw = M_PI;
-//                        ROS_ERROR("PI");
-//                    }
-
                     double s = std::sqrt(std::pow(sample_vel1.values[0], 2) + std::pow(sample_vel1.values[1], 2));
                     sample_vel1.values[0] = s * std::cos(my_yaw);
                     sample_vel1.values[1] = s * std::sin(my_yaw);
