@@ -103,7 +103,7 @@ double* map_side_walls(map_t *map, pf_vector_t pose, double max_range){
 }
 
 // SINA: Return the value for crosswalk feature based on the current pose
-int map_see_crosswalk(map_t *map, pf_vector_t pose, double delta_dist, double max_dist){
+double map_see_crosswalk(map_t *map, pf_vector_t pose, double delta_dist, double max_dist){
     double dist = -1;
     for (int i = 0; i < map->cross_walks_count; i++){
         double temp_dist = pow((pose.v[0] - map->cross_walks[i].x), 2) + pow((pose.v[1] - map->cross_walks[i].y), 2);
@@ -131,11 +131,11 @@ int map_see_crosswalk(map_t *map, pf_vector_t pose, double delta_dist, double ma
 
     if (dist != -1){
         if (dist <= max_dist){
-            return 1;
+            return dist;
         }
-        return 0;
+        return 0.0;
     }else{
-        return 0;
+        return 0.0;
     }
 }
 
@@ -180,7 +180,7 @@ int map_see_turnpoint(map_t *map, pf_vector_t pose, double delta_dist, double ma
 }
 
 // SINA: Return the value for junction feature based on the current pose
-int map_see_junction(map_t *map, pf_vector_t pose, double delta_dist, double max_dist){
+double map_see_junction(map_t *map, pf_vector_t pose, double delta_dist, double max_dist){
     double dist = -1;
     int junction_index = -1;
     for (int i = 0; i < map->junctions_count; i++){
@@ -215,7 +215,7 @@ int map_see_junction(map_t *map, pf_vector_t pose, double delta_dist, double max
             return 0;
         }
 
-        return map->junctions[junction_index].type;
+        return dist;
     }
 }
 

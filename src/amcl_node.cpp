@@ -205,8 +205,8 @@ private:
     vector<Sample>      m_2;
     vector<Sample>      v_2;
 
-    int cross_walk_seen;
-    int junction_seen;
+    double cross_walk_seen;
+    double junction_seen;
     double* walls_dists;
 
     ros::Time           sampling_time[3];
@@ -1057,8 +1057,8 @@ void AmclNode::collect_sample(geometry_msgs::PoseWithCovarianceStamped *our_pose
             velocity_samples[current_pose_index - 2].v[1]) / delta_t;
 
     // Find the features based on the new leader pose
-    cross_walk_seen = map_see_crosswalk (this->map_, leader_pose_v, 0.2, 5);
-    junction_seen   = map_see_junction (this->map_, leader_pose_v, 0.2, 5);
+    cross_walk_seen = map_see_crosswalk (this->map_, leader_pose_v, 0.2, 3);
+    junction_seen   = map_see_junction (this->map_, leader_pose_v, 0.2, 3);
     walls_dists     = map_side_walls (this->map_, leader_pose_v, 3);
 
     if (!walls_dists){
@@ -1239,10 +1239,10 @@ void AmclNode::init_HMM(){
     double max_a = +0.5;
 
     double min_cross = 0;
-    double max_cross = 1;
+    double max_cross = 3;
 
     double min_junc = 0;
-    double max_junc = 2;
+    double max_junc = 3;
 
     double min_wall = 0;
     double max_wall = 3;
