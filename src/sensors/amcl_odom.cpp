@@ -372,6 +372,21 @@ void AMCLOdom::getNestedParticlePose(pf_vector_t *odom_pose, pf_vector_t *delta,
                                      double time){
     double dice = drand48() * 100;
 
+    if (dice < 50){
+        double vel_ = drand48() * 0.5;
+
+        vel.v[0] = vel_;
+        vel.v[1] = 0.0;
+        vel.v[2] = 0.0;
+    } else {
+        double turn = (drand48() * 0.6) - 0.3;
+
+        vel.v[0] = 0.0;
+        vel.v[1] = 0.0;
+        vel.v[2] = turn;
+    }
+
+    dice = drand48() * 100;
     double map_range = map_calc_range(this->map, odom_pose->v[0], odom_pose->v[1], odom_pose->v[2], 10);
 
     if(map_range < 1){

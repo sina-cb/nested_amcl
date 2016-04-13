@@ -1771,21 +1771,6 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
         hmm_use_time = ros::Time::now();
         odata.observations = &observations;
 
-        double dice = drand48() * 100;
-        if (dice < 90){
-            odata.nested_velocity.v[0] = 0.4;
-            odata.nested_velocity.v[1] = 0.0;
-            odata.nested_velocity.v[2] = 0.0;
-        } else if (dice < 95){
-            odata.nested_velocity.v[0] = 0.0;
-            odata.nested_velocity.v[1] = 0.0;
-            odata.nested_velocity.v[2] = 0.2;
-        } else {
-            odata.nested_velocity.v[0] = 0.0;
-            odata.nested_velocity.v[1] = 0.0;
-            odata.nested_velocity.v[2] = -0.2;
-        }
-
         if (odata.time > 1.2){
             odata.time = 1.2;
         }
@@ -1801,8 +1786,6 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
                  odata.nested_velocity.v[0] * odata.time,
                 odata.nested_velocity.v[1] * odata.time
                 );
-
-//        ROS_WARN("Agnle Correction: %f", odata.velocity_angle_diff);
 
         /**
           Notes for me:
