@@ -376,7 +376,7 @@ void AMCLOdom::getNestedParticlePose(pf_vector_t *odom_pose, pf_vector_t *delta,
     map_cell_t * map_cell = map_get_cell(this->map, odom_pose->v[0], odom_pose->v[1], odom_pose->v[2]);
 
     double delta_ = sqrt(vel.v[0] * vel.v[0] + vel.v[1] * vel.v[1]);
-    double correction = pf_vector_angle(vel);
+    double move_angle = pf_vector_angle(vel);
 
     delta_ *= time;
 
@@ -396,12 +396,12 @@ void AMCLOdom::getNestedParticlePose(pf_vector_t *odom_pose, pf_vector_t *delta,
         }
 
         dice = drand48() * 100;
-        if (dice < 50){
+        if (dice < 20){
             // To get out of deadlocks that might happen in small rooms!
             delta->v[0] = std::cos(delta->v[2]) * delta_;
             delta->v[1] = std::sin(delta->v[2]) * delta_;
         }
-    }else if (map_cell->occ_state >= 0){ // If the particle is on the occupied or unknown cells of the map
+    }/*else if (map_cell->occ_state >= 0){ // If the particle is on the occupied or unknown cells of the map
         double* walls = map_side_walls(this->map, *odom_pose, 3.0);
 
         int direction = 0;
@@ -422,11 +422,11 @@ void AMCLOdom::getNestedParticlePose(pf_vector_t *odom_pose, pf_vector_t *delta,
         delta->v[0] = std::cos(odom_pose->v[2] + recovery_turn) * delta_;
         delta->v[1] = std::sin(odom_pose->v[2] + recovery_turn) * delta_;
         delta->v[2] = recovery_turn;
-    } else {
+    } */else {
         double offset = (drand48() * M_PI / 2) - (M_PI / 4);
-        delta->v[0] = std::cos(correction) * delta_;
-        delta->v[1] = std::sin(correction) * delta_;
-        delta->v[2] = correction - odom_pose->v[2] + offset;
+        delta->v[0] = std::cos(move_angle) * delta_;
+        delta->v[1] = std::sin(move_angle) * delta_;
+        delta->v[2] = move_angle - odom_pose->v[2] + offset;
     }
 
 }
