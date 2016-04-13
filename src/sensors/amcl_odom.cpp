@@ -370,8 +370,23 @@ bool AMCLOdom::UpdateNestedAction(pf_t *pf, pf_vector_t vel, double correction_a
 // SINA: This method will propagate the odom
 void AMCLOdom::getNestedParticlePose(pf_vector_t *odom_pose, pf_vector_t *delta, pf_vector_t vel, double correction_angle,
                                      double time){
-    double dice = drand48() * 100;
 
+    double dice = drand48() * 100;
+    if (dice < 90){
+        vel.v[0] = 0.4;
+        vel.v[1] = 0.0;
+        vel.v[2] = 0.0;
+    } else if (dice < 95){
+        vel.v[0] = 0.0;
+        vel.v[1] = 0.0;
+        vel.v[2] = 0.2;
+    } else {
+        vel.v[0] = 0.0;
+        vel.v[1] = 0.0;
+        vel.v[2] = -0.2;
+    }
+
+    dice = drand48() * 100;
     double map_range = map_calc_range(this->map, odom_pose->v[0], odom_pose->v[1], odom_pose->v[2], 10);
 
     if(map_range < 1){
