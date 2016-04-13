@@ -531,7 +531,7 @@ AmclNode::AmclNode() :
     std::string home_path = std::string(getenv("HOME"));
 
 
-    algo_name = "STATIC_MOTION";
+    algo_name = "RANDOM_MOTION";
     std::string file_name;
 
     private_nh_.param("robot_start_config_id", robot_start_config_id, std::string("DefaultConfig") );
