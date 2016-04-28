@@ -82,6 +82,8 @@
 
 #define COLLECT_DATA 1
 
+#define SIMULATION 0
+
 #define NEW_UNIFORM_SAMPLING 1
 
 //This is = (57/640)*(M_PI/180)
@@ -540,8 +542,9 @@ AmclNode::AmclNode() :
     private_nh_.param("landmark_loc_x", landmark_loc_x, 0.0);
     private_nh_.param("landmark_loc_y", landmark_loc_y, 0.0);
 
-
+#if SIMULATION
     true_pose_client = nh_.serviceClient<gazebo_msgs::GetModelState>("/gazebo/get_model_state");
+#endif
 
 #if COLLECT_DATA
     /* ****Data Collection**** */
@@ -1066,8 +1069,9 @@ void AmclNode::collect_sample(geometry_msgs::PoseWithCovarianceStamped *our_pose
     }
 
     // Collect Samples Here!!!
+#if SIMULATION
     if (/*observations.size() != 0 || */nested_MSE <= .3){
-
+#endif
         //        ROS_INFO("Times: %f\t%f\t%f", sampling_time[0].toSec(), sampling_time[1].toSec(), sampling_time[2].toSec());
 
         //        ROS_INFO("Delta_T: %f", delta_t);
@@ -1226,7 +1230,9 @@ void AmclNode::collect_sample(geometry_msgs::PoseWithCovarianceStamped *our_pose
 
             ROS_WARN("Let's learn something!");
         }
+#if SIMULATION
     }
+#endif
 
 }
 
@@ -2147,7 +2153,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
 
 
         /* Collect true pose from gazebo */
-
+#if SIMULATION
         true_pose_service.request.model_name = std::string("Robot1");
         if (true_pose_client.call(true_pose_service))
         {
@@ -2221,7 +2227,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
             ROS_ERROR("Failed to call service gazebo/get_model_state");
             //exit(1);
         }
-
+#endif
         /* *** */
 
         //ROS_INFO("\n ldata.range_count: %d",ldata.range_count);
@@ -2447,6 +2453,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
         cloud_msg.header.frame_id = global_frame_id_;
         cloud_msg.poses.resize(set->sample_count);
 
+#if SIMULATION
         normal_particles_within_1m = 0;
         for(int i = 0;i < set->sample_count; i++)
         {
@@ -2472,6 +2479,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
         normal_RootMSE = sqrt(normal_MSE);
 
         ROS_DEBUG("normal_MSE: %f", normal_MSE);
+#endif
 
         particlecloud_pub_.publish(cloud_msg);
 
@@ -2498,7 +2506,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
 
             int curr_total_nested_particle_count = 0;
             double nested_squaredError = 0.0;
-
+#if SIMULATION
             nested_particles_within_1m = 0;
             for(int i = 0; i < upper_particles_set->sample_count; i++){
 
@@ -2534,7 +2542,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
             nested_MSE = nested_squaredError / curr_total_nested_particle_count;
             nested_RootMSE = sqrt(nested_MSE);
             ROS_DEBUG("Nested normal_MSE: %f", nested_MSE);
-
+#endif
             nested_particlecloud_pub_.publish(nested_cloud_msg);
 
             //printf(" This is getting printed! Yay!!!");
@@ -3100,8 +3108,8 @@ AmclNode::log_data(geometry_msgs::PoseWithCovarianceStamped pose_bestEstimate){
     results_out << data_stream.str() << std::endl;
     results_out.flush();
 
-    ROS_DEBUG("nested_amcl sent: ## %s ##", data_msg.data.c_str());
-    npf_data_pub_.publish(data_msg);
+//    ROS_DEBUG("nested_amcl sent: ## %s ##", data_msg.data.c_str());
+//    npf_data_pub_.publish(data_msg);
 }
 
 #endif
