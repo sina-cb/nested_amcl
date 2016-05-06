@@ -931,41 +931,41 @@ void AmclNode::reconfigureCB(AMCLConfig &config, uint32_t level)
 // TODO: still not decided how and when to actually call this function, but
 //       it is meant to update the HMM strucuture and learn the distributions
 void AmclNode::learn_HMM(){
-    int max_iterations = 2;
+    int max_iterations = 3;
     int N = 40;
 
-    if (!set_distributions_before){
-        for (size_t i = 0; i < pi_1.size(); i++){
-            pi_1[i].p = 1.0 / pi_1.size();
-        }
+//    if (!set_distributions_before){
+//        for (size_t i = 0; i < pi_1.size(); i++){
+//            pi_1[i].p = 1.0 / pi_1.size();
+//        }
 
-        for (size_t i = 0; i < m_1.size(); i++){
-            m_1[i].p = 1.0 / m_1.size();
-        }
+//        for (size_t i = 0; i < m_1.size(); i++){
+//            m_1[i].p = 1.0 / m_1.size();
+//        }
 
-        for (size_t i = 0; i < v_1.size(); i++){
-            v_1[i].p = 1.0 / v_1.size();
-        }
+//        for (size_t i = 0; i < v_1.size(); i++){
+//            v_1[i].p = 1.0 / v_1.size();
+//        }
 
-        for (size_t i = 0; i < pi_2.size(); i++){
-            pi_2[i].p = 1.0 / pi_2.size();
-        }
+//        for (size_t i = 0; i < pi_2.size(); i++){
+//            pi_2[i].p = 1.0 / pi_2.size();
+//        }
 
-        for (size_t i = 0; i < m_2.size(); i++){
-            m_2[i].p = 1.0 / m_2.size();
-        }
+//        for (size_t i = 0; i < m_2.size(); i++){
+//            m_2[i].p = 1.0 / m_2.size();
+//        }
 
-        for (size_t i = 0; i < v_2.size(); i++){
-            v_2[i].p = 1.0 / v_2.size();
-        }
+//        for (size_t i = 0; i < v_2.size(); i++){
+//            v_2[i].p = 1.0 / v_2.size();
+//        }
 
-        hmm.set_distributions(&pi_1, &m_1, &v_1, 0.5, 0);
-        hmm.set_distributions(&pi_2, &m_2, &v_2, 0.5, 1);
+//        hmm.set_distributions(&pi_1, &m_1, &v_1, 0.5, 0);
+//        hmm.set_distributions(&pi_2, &m_2, &v_2, 0.5, 1);
 
-        // Comment this line if you want to set the distribution each time you learn the HMM
-        set_distributions_before = true;
-        ROS_WARN("Set the distributions just once!!!");
-    }
+//        // Comment this line if you want to set the distribution each time you learn the HMM
+//        set_distributions_before = true;
+//        ROS_WARN("Set the distributions just once!!!");
+//    }
 
     hmm.learn_hmm(&observations, max_iterations, N);
 
