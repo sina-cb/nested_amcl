@@ -548,7 +548,7 @@ AmclNode::AmclNode() :
     std::string home_path = std::string(getenv("HOME"));
 
 
-    algo_name = "LMCHMM";
+    algo_name = "LMCHMM_NO_PRIME";
     std::string file_name;
 
     private_nh_.param("robot_start_config_id", robot_start_config_id, std::string("DefaultConfig") );
